@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dissonance</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="hud-key" class="panel">
+      <div class="label">Key</div>
+      <div id="key-name" class="big"></div>
+      <div id="scale-notes"></div>
+    </div>
+
+    <div id="hud-remaining" class="panel center-top">
+      <div class="label">Dissonant notes left</div>
+      <div id="remaining" class="big"></div>
+    </div>
+
+    <div id="hud-inventory" class="panel">
+      <div class="inv"><span class="glyph sharp">♯</span><span id="sharps">0</span><span class="hint">E / scroll up</span></div>
+      <div class="inv"><span class="glyph flat">♭</span><span id="flats">0</span><span class="hint">Q / scroll down</span></div>
+    </div>
+
+    <div id="hud-staff" class="panel">
+      <div class="label">The staff</div>
+      <canvas id="staff-map" width="220" height="150"></canvas>
+    </div>
+
+    <div id="hud-harmony" class="panel">
+      <div class="label">Harmony</div>
+      <div class="bar"><div id="harmony-fill"></div></div>
+    </div>
+
+    <div id="hud-pitch" class="panel">
+      <div class="label">You are</div>
+      <div id="pitch" class="big"></div>
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="toast"></div>
+    <div id="hurt"></div>
+  </div>
+
+  <div id="overlay">
+    <div class="card" id="card">
+      <h1>DISSONANCE</h1>
+      <p class="tag">You are a sentient music note.</p>
+      <p>Wrong notes have crept into the measure. Every note that doesn't belong in the key is
+        <b class="bad">dissonant</b> and it wants to drag you out of tune. Fire your own pitch at them to
+        <b>resolve</b> them back into the scale.</p>
+      <p>You can only hit notes on <b>your own line or space</b> of the staff. Collect
+        <b class="sharp">sharps ♯</b> to shift up a step and <b class="flat">flats ♭</b> to shift down.
+        Leave the <b class="good">gold notes</b> alone. They're in the key, and hitting them costs you harmony.</p>
+      <div class="controls">
+        <div><kbd>W A S D</kbd> move</div>
+        <div><kbd>Mouse</kbd> look</div>
+        <div><kbd>Click</kbd> fire your pitch</div>
+        <div><kbd>E</kbd> / scroll up: use ♯</div>
+        <div><kbd>Q</kbd> / scroll down: use ♭</div>
+        <div><kbd>Shift</kbd> sprint · <kbd>M</kbd> mute</div>
+      </div>
+      <button id="start-btn">Play</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
