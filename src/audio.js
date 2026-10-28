@@ -350,3 +350,23 @@ export function cadence(tonicMidi) {
 export function collapse() {
   [0, 1, 6, 11].forEach((s, i) => tone(110 * 2 ** (s / 12), 1.4, { type: 'sawtooth', gain: 0.06, glideTo: 60, when: i * 0.03 }));
 }
+
+// A low thud that drops in pitch, for the flat's shockwave
+export function shockwave(freq) {
+  tone(freq / 2, 0.6, { type: 'sine', gain: 0.3, glideTo: freq / 4 });
+  tone(freq, 0.4, { type: 'triangle', gain: 0.08, glideTo: freq / 2 });
+}
+
+// A bright rising chirp for the sharp's power-up
+export function sharpen(freq) {
+  tone(freq, 0.35, { type: 'square', gain: 0.05, glideTo: freq * 2 ** (1 / 12) * 2 });
+  tone(freq * 2, 0.5, { type: 'triangle', gain: 0.07, when: 0.1 });
+}
+
+export function enemyShot(freq) {
+  tone(freq, 0.35, { type: 'sawtooth', gain: 0.05, glideTo: freq * 0.94 });
+}
+
+export function heal(freq) {
+  [0, 4, 7, 12, 16].forEach((s, i) => tone(freq * 2 ** (s / 12), 0.35, { type: 'sine', gain: 0.08, when: i * 0.05 }));
+}

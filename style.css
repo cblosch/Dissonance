@@ -53,8 +53,22 @@ html, body {
 .glyph { font-size: 28px; width: 22px; text-align: center; }
 .glyph.sharp, .sharp { color: var(--sharp); }
 .glyph.flat, .flat { color: var(--flat); }
+.natural { color: #7dffb0; }
 
 #hud-staff { top: 110px; right: 16px; }
+
+#buff {
+  top: 92px; left: 50%; transform: translateX(-50%);
+  color: var(--sharp); font-weight: 700; font-size: 15px;
+}
+
+.roster { list-style: none; padding: 0; margin: 12px 0; text-align: left; display: grid; gap: 8px; }
+.roster li { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+.roster li span { color: var(--muted); }
+.roster .new {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: #05040f; background: var(--bad); border-radius: 4px; padding: 1px 5px; margin-left: 4px;
+}
 #staff-map { display: block; margin-top: 4px; }
 
 #hud-harmony { bottom: 16px; left: 16px; width: 260px; }

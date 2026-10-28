@@ -25,9 +25,11 @@
     </div>
 
     <div id="hud-inventory" class="panel">
-      <div class="inv"><span class="glyph sharp">♯</span><span id="sharps">0</span><span class="hint">E to move up</span></div>
-      <div class="inv"><span class="glyph flat">♭</span><span id="flats">0</span><span class="hint">Q to move down</span></div>
+      <div class="inv"><span class="glyph sharp">♯</span><span id="sharps">0</span><span class="hint">E: up a step + sharp shots</span></div>
+      <div class="inv"><span class="glyph flat">♭</span><span id="flats">0</span><span class="hint">Q: down a step + shockwave</span></div>
     </div>
+
+    <div id="buff" class="panel hidden"></div>
 
     <div id="hud-staff" class="panel">
       <div class="label">Where they are</div>
@@ -58,9 +60,11 @@
       <p>Some notes have snuck into the song that don't belong in the key. They sound off, and they're
         coming for you. Shoot your own pitch at the <b class="bad">red, off-key notes</b> to knock them back into tune.
         Clear them all to finish the level.</p>
-      <p>Your shots only hit notes on the same line or space as you. Grab <b class="sharp">sharps ♯</b> to move
-        up a step and <b class="flat">flats ♭</b> to move down one. Don't shoot the <b class="good">gold notes</b>.
-        They belong in the key, and hitting them costs you harmony.</p>
+      <p>Your shots only hit notes on the same line or space as you. Use a <b class="sharp">sharp ♯</b> to move
+        up a step and sharpen your shots for a few seconds. Use a <b class="flat">flat ♭</b> to drop down a step
+        with a shockwave that knocks back nearby notes. Beaten notes drop the ♯ or ♭ they were wearing, and a
+        <b class="natural">natural ♮</b> heals you.</p>
+      <p>Don't shoot the <b class="good">gold notes</b>. They belong in the key, and hitting them costs you harmony.</p>
       <div class="controls">
         <div><kbd>W A S D</kbd> move</div>
         <div><kbd>Mouse</kbd> look around</div>
