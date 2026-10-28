@@ -1,9 +1,9 @@
-// Web Audio synthesis: every sound in the game is generated, no samples.
+// Web Audio synthesis: every sound in the game, including the music, is generated. No samples.
 
 let ctx = null;
 let master = null;
+let humBus = null;
 let muted = false;
-let drone = null;
 
 const freqOfMidi = (m) => 440 * 2 ** ((m - 69) / 12);
 
@@ -17,6 +17,8 @@ export function init() {
   master.gain.value = 0.6;
   master.connect(comp);
   comp.connect(ctx.destination);
+  humBus = ctx.createGain();
+  humBus.connect(master);
 }
 
 export function toggleMute() {
@@ -46,31 +48,186 @@ function tone(freq, dur, { type = 'triangle', gain = 0.15, when = 0, glideTo = n
   o.stop(t + dur + 0.05);
 }
 
-// ---------- Drone: the tonic and fifth, so wrong notes sound wrong ----------
-export function setDrone(root, fifth) {
-  if (!ctx) return;
-  if (drone) {
-    const old = drone;
-    old.g.gain.setTargetAtTime(0, ctx.currentTime, 0.3);
-    setTimeout(() => old.oscs.forEach((o) => o.stop()), 1500);
+// ---------- Soundtrack ----------
+// A generated groove that stays strictly inside the level's key, so the
+// off-key notes clash against it. Chords, bass, an arpeggio, a loose melody
+// and light drums are all scheduled ahead of time on a 16th-note grid.
+
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const PROGRESSIONS = [
+  [0, 5, 3, 4], // I  vi IV V
+  [0, 3, 4, 3], // I  IV V  IV
+  [5, 3, 0, 4], // vi IV I  V
+  [0, 4, 5, 3], // I  V  vi IV
+  [3, 4, 2, 5], // IV V  iii vi
+];
+const MUSIC_VOLUME = 0.65;
+const ARP = [0, 2, 4, 7, 4, 2, 4, 2];
+
+let music = null;
+let noiseBuffer = null;
+
+const degMidi = (base, deg) => base + MAJOR[((deg % 7) + 7) % 7] + 12 * Math.floor(deg / 7);
+
+function noise() {
+  if (!noiseBuffer) {
+    noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   }
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer;
+  return src;
+}
+
+function voice(freq, t, dur, { type = 'triangle', gain = 0.05, attack = 0.01, echo = false, cutoff = 0 } = {}) {
+  const o = ctx.createOscillator();
   const g = ctx.createGain();
-  g.gain.value = 0;
-  const lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 700;
-  const oscs = [root, root * 2, fifth].map((f, i) => {
-    const o = ctx.createOscillator();
-    o.type = i === 1 ? 'triangle' : 'sine';
-    o.frequency.value = f;
+  o.type = type;
+  o.frequency.value = freq;
+  env(g, t, gain, attack, dur);
+  let out = o;
+  if (cutoff) {
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = cutoff;
     o.connect(lp);
-    o.start();
-    return o;
-  });
-  lp.connect(g);
-  g.connect(master);
-  g.gain.setTargetAtTime(0.05, ctx.currentTime, 0.8);
-  drone = { g, oscs };
+    out = lp;
+  }
+  out.connect(g);
+  g.connect(music.bus);
+  if (echo) g.connect(music.echo);
+  o.start(t);
+  o.stop(t + dur + 0.05);
+}
+
+function drum(kind, t) {
+  const g = ctx.createGain();
+  g.connect(music.bus);
+  if (kind === 'kick') {
+    const o = ctx.createOscillator();
+    o.frequency.setValueAtTime(130, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    env(g, t, 0.22, 0.005, 0.3);
+    o.connect(g);
+    o.start(t);
+    o.stop(t + 0.35);
+    return;
+  }
+  const src = noise();
+  const f = ctx.createBiquadFilter();
+  if (kind === 'hat') {
+    f.type = 'highpass';
+    f.frequency.value = 7000;
+    env(g, t, 0.025, 0.002, 0.05);
+  } else {
+    f.type = 'bandpass';
+    f.frequency.value = 1800;
+    env(g, t, 0.06, 0.003, 0.16);
+  }
+  src.connect(f);
+  f.connect(g);
+  src.start(t);
+  src.stop(t + 0.2);
+}
+
+function playStep(step, t, s16) {
+  const { tonic, prog } = music;
+  const pos = step % 16;
+  const chord = prog[Math.floor(step / 16) % prog.length];
+
+  // Pad: the full chord, held for the bar
+  if (pos === 0) {
+    for (const k of [0, 2, 4]) {
+      voice(freqOfMidi(degMidi(tonic - 12, chord + k)), t, s16 * 16, { type: 'sawtooth', gain: 0.022, attack: 0.5, cutoff: 900 });
+    }
+  }
+
+  // Bass: root on 1 and 3, fifth as a pickup
+  const bassBase = tonic - 24;
+  if (pos === 0 || pos === 8) voice(freqOfMidi(degMidi(bassBase, chord)), t, s16 * 5, { type: 'triangle', gain: 0.16 });
+  if (pos === 14) voice(freqOfMidi(degMidi(bassBase, chord + 4)), t, s16 * 2, { type: 'triangle', gain: 0.1 });
+
+  // Arpeggio on 8th notes, echoed
+  if (pos % 2 === 0) {
+    voice(freqOfMidi(degMidi(tonic, chord + ARP[pos / 2])), t, s16 * 1.6, { type: 'triangle', gain: 0.028, echo: true });
+  }
+
+  // Melody: a slow random walk that lands on chord tones at the start of a bar
+  if (pos % 4 === 0 && Math.random() < (pos === 0 ? 0.8 : 0.35)) {
+    let deg = music.melody + [-2, -1, -1, 1, 1, 2][Math.floor(Math.random() * 6)];
+    if (pos === 0) {
+      const tones = [chord, chord + 2, chord + 4, chord + 7, chord + 9];
+      deg = tones.reduce((a, b) => (Math.abs(b - deg) < Math.abs(a - deg) ? b : a));
+    }
+    music.melody = Math.max(4, Math.min(12, deg));
+    const f = freqOfMidi(degMidi(tonic, music.melody));
+    voice(f, t, s16 * 3.5, { type: 'sine', gain: 0.06, attack: 0.02, echo: true });
+    voice(f * 2, t, s16 * 1.5, { type: 'sine', gain: 0.012, echo: true });
+  }
+
+  // Drums
+  if (pos === 0 || pos === 8 || (pos === 10 && Math.random() < 0.3)) drum('kick', t);
+  if (pos === 4 || pos === 12) drum('snare', t);
+  if (pos % 2 === 0) drum('hat', t + (pos % 4 === 2 ? s16 * 0.08 : 0));
+}
+
+function schedule() {
+  if (!music || music.paused) return;
+  const s16 = 60 / music.bpm / 4;
+  while (music.next < ctx.currentTime + 0.15) {
+    playStep(music.step, music.next, s16);
+    music.step++;
+    music.next += s16;
+  }
+}
+
+export function startMusic(tonicMidi, bpm, variation = 0) {
+  if (!ctx) return;
+  stopMusic();
+  humBus.gain.setTargetAtTime(1, ctx.currentTime, 0.1);
+  const bus = ctx.createGain();
+  bus.gain.value = 0;
+  bus.gain.setTargetAtTime(MUSIC_VOLUME, ctx.currentTime, 0.4);
+  bus.connect(master);
+  // Dotted-eighth echo gives the arpeggio and melody some space
+  const echo = ctx.createDelay(1);
+  echo.delayTime.value = (60 / bpm) * 0.75;
+  const feedback = ctx.createGain();
+  feedback.gain.value = 0.32;
+  const wet = ctx.createGain();
+  wet.gain.value = 0.35;
+  echo.connect(feedback);
+  feedback.connect(echo);
+  echo.connect(wet);
+  wet.connect(bus);
+  music = {
+    bus, echo, bpm, tonic: tonicMidi,
+    prog: PROGRESSIONS[variation % PROGRESSIONS.length],
+    step: 0, next: ctx.currentTime + 0.1, melody: 7, paused: false,
+    timer: setInterval(schedule, 25),
+  };
+}
+
+// Pausing also silences the off-key notes' hums
+export function setMusicPaused(paused) {
+  if (!ctx) return;
+  humBus.gain.setTargetAtTime(paused ? 0 : 1, ctx.currentTime, 0.1);
+  if (!music) return;
+  music.paused = paused;
+  music.bus.gain.setTargetAtTime(paused ? 0 : MUSIC_VOLUME, ctx.currentTime, 0.1);
+  if (!paused) music.next = Math.max(music.next, ctx.currentTime + 0.05);
+}
+
+export const isMusicPlaying = () => !!music;
+
+export function stopMusic() {
+  if (!music) return;
+  clearInterval(music.timer);
+  const { bus } = music;
+  bus.gain.setTargetAtTime(0, ctx.currentTime, 0.2);
+  setTimeout(() => bus.disconnect(), 1500);
+  music = null;
 }
 
 // ---------- Positional hum for each dissonant note ----------
@@ -94,7 +251,7 @@ export function createHum(freq) {
   o1.frequency.value = freq;
   o2.frequency.value = freq * 1.012;
   o1.connect(lp); o2.connect(lp);
-  lp.connect(g); g.connect(p); p.connect(master);
+  lp.connect(g); g.connect(p); p.connect(humBus);
   o1.start(); o2.start();
   return { o1, o2, g, p };
 }
@@ -116,7 +273,7 @@ export function updateHum(h, pos, factor) {
   } else {
     h.p.setPosition(pos.x, pos.y, pos.z);
   }
-  h.g.gain.setTargetAtTime(0.045 * factor, t, 0.15);
+  h.g.gain.setTargetAtTime(0.04 * factor, t, 0.15);
 }
 
 export function stopHum(h) {

@@ -122,6 +122,17 @@ button {
   color: #05040f; background: linear-gradient(90deg, var(--player), #b48cff); border: none;
 }
 button:hover { filter: brightness(1.15); }
+button.secondary {
+  color: var(--text); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border);
+}
+.buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
+.buttons button { margin-top: 0; }
+
+#restart-btn {
+  position: absolute; bottom: 16px; right: 16px; pointer-events: auto;
+  font-size: 14px; padding: 8px 16px; letter-spacing: 0.05em;
+  color: var(--text); background: var(--panel); border: 1px solid var(--border);
+}
 
 @media (max-width: 640px) {
   .controls { grid-template-columns: 1fr; }

@@ -20,17 +20,17 @@
     </div>
 
     <div id="hud-remaining" class="panel center-top">
-      <div class="label">Dissonant notes left</div>
+      <div class="label">Off-key notes left</div>
       <div id="remaining" class="big"></div>
     </div>
 
     <div id="hud-inventory" class="panel">
-      <div class="inv"><span class="glyph sharp">♯</span><span id="sharps">0</span><span class="hint">E / scroll up</span></div>
-      <div class="inv"><span class="glyph flat">♭</span><span id="flats">0</span><span class="hint">Q / scroll down</span></div>
+      <div class="inv"><span class="glyph sharp">♯</span><span id="sharps">0</span><span class="hint">E to move up</span></div>
+      <div class="inv"><span class="glyph flat">♭</span><span id="flats">0</span><span class="hint">Q to move down</span></div>
     </div>
 
     <div id="hud-staff" class="panel">
-      <div class="label">The staff</div>
+      <div class="label">Where they are</div>
       <canvas id="staff-map" width="220" height="150"></canvas>
     </div>
 
@@ -44,6 +44,8 @@
       <div id="pitch" class="big"></div>
     </div>
 
+    <button id="restart-btn" class="small" title="Restart level (R)">↻ Restart</button>
+
     <div id="crosshair"></div>
     <div id="toast"></div>
     <div id="hurt"></div>
@@ -52,22 +54,24 @@
   <div id="overlay">
     <div class="card" id="card">
       <h1>DISSONANCE</h1>
-      <p class="tag">You are a sentient music note.</p>
-      <p>Wrong notes have crept into the measure. Every note that doesn't belong in the key is
-        <b class="bad">dissonant</b> and it wants to drag you out of tune. Fire your own pitch at them to
-        <b>resolve</b> them back into the scale.</p>
-      <p>You can only hit notes on <b>your own line or space</b> of the staff. Collect
-        <b class="sharp">sharps ♯</b> to shift up a step and <b class="flat">flats ♭</b> to shift down.
-        Leave the <b class="good">gold notes</b> alone. They're in the key, and hitting them costs you harmony.</p>
+      <p class="tag">You're a music note, and you're alive.</p>
+      <p>Some notes have snuck into the song that don't belong in the key. They sound off, and they're
+        coming for you. Shoot your own pitch at the <b class="bad">red, off-key notes</b> to knock them back into tune.
+        Clear them all to finish the level.</p>
+      <p>Your shots only hit notes on the same line or space as you. Grab <b class="sharp">sharps ♯</b> to move
+        up a step and <b class="flat">flats ♭</b> to move down one. Don't shoot the <b class="good">gold notes</b>.
+        They belong in the key, and hitting them costs you harmony.</p>
       <div class="controls">
         <div><kbd>W A S D</kbd> move</div>
-        <div><kbd>Mouse</kbd> look</div>
-        <div><kbd>Click</kbd> fire your pitch</div>
-        <div><kbd>E</kbd> / scroll up: use ♯</div>
-        <div><kbd>Q</kbd> / scroll down: use ♭</div>
-        <div><kbd>Shift</kbd> sprint · <kbd>M</kbd> mute</div>
+        <div><kbd>Mouse</kbd> look around</div>
+        <div><kbd>Click</kbd> shoot</div>
+        <div><kbd>Shift</kbd> sprint</div>
+        <div><kbd>E</kbd> or scroll up: use a ♯</div>
+        <div><kbd>Q</kbd> or scroll down: use a ♭</div>
+        <div><kbd>R</kbd> restart level</div>
+        <div><kbd>Esc</kbd> pause · <kbd>M</kbd> mute</div>
       </div>
-      <button id="start-btn">Play</button>
+      <div class="buttons"><button id="start-btn">Play</button></div>
     </div>
   </div>
 

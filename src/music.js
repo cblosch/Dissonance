@@ -22,33 +22,33 @@ export const isLine = (i) => i % 2 === 0;
 export const LEVELS = [
   {
     key: 'C major', tonic: { letter: 'C', acc: 0 }, sig: {},
-    dissonant: 6, consonant: 4, pickups: 4, speed: 2.2, hops: false,
+    dissonant: 6, consonant: 4, pickups: 4, speed: 2.2, hops: false, bpm: 92,
     minFloor: 2, maxFloor: 6, startFloor: 4,
-    intro: 'No sharps, no flats. Any note wearing an accidental is an intruder.',
+    intro: 'C major has no sharps or flats, so any note with one is out of place.',
   },
   {
     key: 'G major', tonic: { letter: 'G', acc: 0 }, sig: { F: 1 },
-    dissonant: 7, consonant: 5, pickups: 5, speed: 2.6, hops: false,
+    dissonant: 7, consonant: 5, pickups: 5, speed: 2.6, hops: false, bpm: 98,
     minFloor: 1, maxFloor: 7, startFloor: 4,
-    intro: 'G major keeps F♯. Here a plain F♮ is the one out of place.',
+    intro: 'G major has one sharp, F♯. That means a plain F (F♮) is the odd one out here.',
   },
   {
     key: 'F major', tonic: { letter: 'F', acc: 0 }, sig: { B: -1 },
-    dissonant: 8, consonant: 5, pickups: 6, speed: 2.9, hops: true,
+    dissonant: 8, consonant: 5, pickups: 6, speed: 2.9, hops: true, bpm: 104,
     minFloor: 0, maxFloor: 8, startFloor: 4,
-    intro: 'F major keeps B♭. Watch out: dissonant notes can now slide along the staff toward you.',
+    intro: 'F major has one flat, B♭. Heads up: from now on, off-key notes can hop between lines to come after you.',
   },
   {
     key: 'D major', tonic: { letter: 'D', acc: 0 }, sig: { F: 1, C: 1 },
-    dissonant: 10, consonant: 6, pickups: 7, speed: 3.2, hops: true,
+    dissonant: 10, consonant: 6, pickups: 7, speed: 3.2, hops: true, bpm: 110,
     minFloor: 0, maxFloor: 8, startFloor: 4,
-    intro: 'D major keeps F♯ and C♯. The whole staff is in play.',
+    intro: 'D major has two sharps, F♯ and C♯. You\'ll need the whole staff for this one.',
   },
   {
     key: 'E♭ major', tonic: { letter: 'E', acc: -1 }, sig: { B: -1, E: -1, A: -1 },
-    dissonant: 12, consonant: 6, pickups: 8, speed: 3.5, hops: true,
+    dissonant: 12, consonant: 6, pickups: 8, speed: 3.5, hops: true, bpm: 116,
     minFloor: 0, maxFloor: 8, startFloor: 4,
-    intro: 'E♭ major keeps B♭, E♭ and A♭. The final measure.',
+    intro: 'E♭ major has three flats: B♭, E♭ and A♭. This is the last level.',
   },
 ];
 

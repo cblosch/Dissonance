@@ -43,6 +43,7 @@ const overlay = $('overlay');
 const card = $('card');
 const hud = $('hud');
 const staffCtx = $('staff-map').getContext('2d');
+const titleHtml = card.innerHTML;
 
 // ---------- Renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -289,7 +290,7 @@ function buildLevel(index) {
   for (let k = 0; k < level.pickups; k++) spawnRandomPickup();
 
   highlightFloor(state.floor);
-  Audio.setDrone(freqOf(state.scale.tonicMidi - 24), freqOf(state.scale.tonicMidi - 17));
+  Audio.stopMusic();
   updateHud();
 }
 
@@ -385,6 +386,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') shiftFloor(1);
   if (e.code === 'KeyQ') shiftFloor(-1);
   if (e.code === 'KeyM') Audio.toggleMute();
+  if (e.code === 'KeyR' && !e.repeat) restartLevel();
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
@@ -430,8 +432,8 @@ function shiftFloor(dir) {
   const to = state.floor + dir;
   const name = dir > 0 ? 'sharp' : 'flat';
   const have = dir > 0 ? state.sharps : state.flats;
-  if (to < 0 || to >= STAFF.length) { toast(dir > 0 ? 'Already at the top of the staff' : 'Already at the bottom of the staff'); return; }
-  if (have <= 0) { toast(`No ${name}s! Find a ${dir > 0 ? '♯' : '♭'}`); Audio.buzz(); return; }
+  if (to < 0 || to >= STAFF.length) { toast(dir > 0 ? "You're already on the top line" : "You're already on the bottom line"); return; }
+  if (have <= 0) { toast(`Out of ${name}s. Find a ${dir > 0 ? '♯' : '♭'} to move ${dir > 0 ? 'up' : 'down'}.`); Audio.buzz(); return; }
   if (dir > 0) state.sharps--; else state.flats--;
   const fromF = freqOf(playerMidi());
   state.shift = { from: state.floor, to, t: 0 };
@@ -487,7 +489,7 @@ function hitEnemy(e, shotPos) {
     state.harmony -= WRONG_NOTE_PENALTY;
     e.flash = 0.3;
     Audio.wrongNote(freqOf(playerMidi()), freqOf(e.midi));
-    toast(`${noteName(e.letter, e.acc)} belongs in ${state.level.key}! Leave gold notes alone.`);
+    toast(`Careful, ${noteName(e.letter, e.acc)} belongs in ${state.level.key}. Only shoot the red notes.`);
     burst(shotPos, COLORS.good, 6, 3);
     return;
   }
@@ -514,7 +516,7 @@ function resolveEnemy(e) {
   e.aura.visible = false;
   e.label.material.map = textTexture(noteName(e.letter, sigAcc), { color: '#ffd36b' });
   burst(e.group.position, COLORS.good, 22, 7);
-  toast(`Resolved ${noteName(e.letter, e.acc, null, e.acc === 0)} → ${noteName(e.letter, sigAcc)}`);
+  toast(`${noteName(e.letter, e.acc, null, e.acc === 0)} is back in tune as ${noteName(e.letter, sigAcc)}`);
   updateHud();
 
   if (remainingDissonant() === 0) {
@@ -742,7 +744,7 @@ function updatePickups(dt, time) {
       levelGroup.remove(p.group);
       if (p.kind === 'sharp') state.sharps++; else state.flats++;
       Audio.arpeggio(freqOf(playerMidi()), p.kind === 'sharp' ? 1 : -1);
-      toast(p.kind === 'sharp' ? '♯ Sharp collected: press E to rise a step' : '♭ Flat collected: press Q to drop a step');
+      toast(p.kind === 'sharp' ? 'Got a sharp. Press E to move up a step.' : 'Got a flat. Press Q to move down a step.');
       respawnQueue.push(PICKUP_RESPAWN);
       updateHud();
     }
@@ -843,23 +845,25 @@ function drawStaffMap() {
 }
 
 // ---------- Screens ----------
-function showCard(html, buttonText, onClick) {
-  card.innerHTML = `${html}<button id="card-btn">${buttonText}</button>`;
+function showCard(html, buttons) {
+  card.innerHTML = `${html}<div class="buttons">${buttons
+    .map(([text, , secondary], i) => `<button data-i="${i}"${secondary ? ' class="secondary"' : ''}>${text}</button>`)
+    .join('')}</div>`;
+  card.querySelectorAll('button').forEach((b) => b.addEventListener('click', buttons[b.dataset.i][1]));
   overlay.classList.remove('hidden');
-  $('card-btn').addEventListener('click', onClick);
 }
 
 function startLevel(index) {
   state.levelIndex = index;
   buildLevel(index);
   const level = LEVELS[index];
+  const start = STAFF[level.startFloor];
   showCard(
-    `<h2>Measure ${index + 1}: ${level.key}</h2>
+    `<h2>Level ${index + 1}: ${level.key}</h2>
      <p class="tag">${state.scale.names.join('  ')}</p>
      <p>${level.intro}</p>
-     <p>Clear <b class="bad">${level.dissonant} dissonant notes</b>. You start on <b>${STAFF[level.startFloor].letter}${STAFF[level.startFloor].octave}</b>, the middle line.</p>`,
-    'Begin',
-    play,
+     <p>Clear all <b class="bad">${level.dissonant} off-key notes</b>. You start on ${start.letter}${start.octave}, the middle line.</p>`,
+    [['Start', play]],
   );
   state.mode = 'between';
 }
@@ -870,49 +874,83 @@ function play() {
   hud.classList.remove('hidden');
   state.mode = 'playing';
   held.group.visible = true;
+  if (Audio.isMusicPlaying()) Audio.setMusicPaused(false);
+  else Audio.startMusic(state.scale.tonicMidi, state.level.bpm, state.levelIndex);
   if (!lockFallback) requestLock();
   clock.getDelta();
 }
 
+function restartLevel() {
+  if (state.mode === 'title' || !state.level) return;
+  const wasPlaying = state.mode === 'playing';
+  buildLevel(state.levelIndex);
+  if (wasPlaying) {
+    // Restarting mid-game keeps you in control instead of showing the intro again
+    Audio.startMusic(state.scale.tonicMidi, state.level.bpm, state.levelIndex);
+    toast('Level restarted');
+  } else {
+    play();
+  }
+}
+
+function showTitle() {
+  state.mode = 'title';
+  Audio.stopMusic();
+  for (const e of enemies) if (e.hum) Audio.stopHum(e.hum);
+  enemies = [];
+  scene.remove(levelGroup);
+  hud.classList.add('hidden');
+  held.group.visible = false;
+  card.innerHTML = titleHtml;
+  $('start-btn').addEventListener('click', () => { Audio.init(); startLevel(0); });
+  overlay.classList.remove('hidden');
+}
+
 function pause() {
   state.mode = 'paused';
-  showCard('<h2>Paused</h2><p>The measure holds its breath.</p>', 'Resume', play);
+  if (document.pointerLockElement) document.exitPointerLock();
+  Audio.setMusicPaused(true);
+  showCard('<h2>Paused</h2><p>Take a breather.</p>', [
+    ['Resume', play],
+    ['Restart level', restartLevel, true],
+    ['Quit to title', showTitle, true],
+  ]);
 }
 
 function levelComplete() {
   if (state.mode !== 'playing') return;
   state.mode = 'between';
   if (document.pointerLockElement) document.exitPointerLock();
+  Audio.stopMusic();
   Audio.cadence(state.scale.tonicMidi);
   const next = state.levelIndex + 1;
   if (next >= LEVELS.length) {
     showCard(
       `<h1>IN TUNE</h1>
-       <p class="tag">Every measure resolved.</p>
-       <p>The staff rings clean from bottom line to top. You were the right note all along.</p>`,
-      'Play again',
-      () => startLevel(0),
+       <p class="tag">You cleared every level.</p>
+       <p>The whole song is back in key. Thanks for playing!</p>`,
+      [['Play again', () => startLevel(0)]],
     );
     return;
   }
   showCard(
-    `<h2>Measure resolved</h2>
+    `<h2>Nice work</h2>
      <p>${state.level.key} is back in tune.</p>
-     <p>Next: <b>${LEVELS[next].key}</b></p>`,
-    'Continue',
-    () => startLevel(next),
+     <p>Up next: <b>${LEVELS[next].key}</b></p>`,
+    [['Next level', () => startLevel(next)], ['Replay this one', () => startLevel(state.levelIndex), true]],
   );
 }
 
 function gameOver() {
   state.mode = 'between';
   if (document.pointerLockElement) document.exitPointerLock();
+  Audio.stopMusic();
+  Audio.setMusicPaused(true);
   Audio.collapse();
   showCard(
     `<h2 class="bad">Out of tune</h2>
-     <p>The dissonance swallowed your harmony.</p>`,
-    'Retry measure',
-    () => startLevel(state.levelIndex),
+     <p>The off-key notes wore your harmony down to nothing. Give it another go.</p>`,
+    [['Try again', () => startLevel(state.levelIndex)], ['Quit to title', showTitle, true]],
   );
 }
 
@@ -920,6 +958,7 @@ $('start-btn').addEventListener('click', () => {
   Audio.init();
   startLevel(0);
 });
+$('restart-btn').addEventListener('click', restartLevel);
 
 // ---------- Main loop ----------
 const clock = new THREE.Clock();
@@ -954,4 +993,4 @@ function frame() {
 frame();
 
 // Exposed for automated smoke tests
-window.__game = { state, get enemies() { return enemies; }, get pickups() { return pickups; }, shiftFloor, fire, resolveEnemy };
+window.__game = { state, pause, get enemies() { return enemies; }, get pickups() { return pickups; }, shiftFloor, fire, resolveEnemy };
