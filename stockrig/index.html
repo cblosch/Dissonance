@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stock Man Rig</title>
+  <script type="importmap">
+    { "imports": { "three": "../vendor/three.module.min.js" } }
+  </script>
+  <style>
+    :root { --bg: #dfe4ea; --panel: rgba(255,255,255,0.92); --ink: #1d232b; --muted: #5b6573; --accent: #2f6fd6; --line: #c9d0d9; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+    canvas#view { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+    canvas#view:active { cursor: grabbing; }
+    .panel { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+    #controls { top: 12px; left: 12px; max-width: calc(100% - 24px); }
+    #controls h1 { margin: 0 0 6px; font-size: 16px; }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    button, label.btn { font: inherit; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer; }
+    button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    #readout { bottom: 12px; left: 12px; font: 12px/1.5 ui-monospace, monospace; }
+    #slots { top: 12px; right: 12px; bottom: 12px; width: min(560px, calc(100% - 24px)); overflow: auto; display: none; }
+    #slots.open { display: block; }
+    #slots table { border-collapse: collapse; font-size: 11px; }
+    #slots th { font-weight: 600; padding: 2px 4px; text-align: center; white-space: nowrap; }
+    #slots th.part { text-align: right; }
+    #slots td { padding: 2px; }
+    .cell { width: 52px; height: 64px; border: 1px dashed var(--line); border-radius: 4px; background: #f3f5f8 center/cover no-repeat; cursor: pointer; position: relative; }
+    .cell.user { border: 2px solid var(--accent); }
+    .cell.mirror::after { content: "mirror"; position: absolute; left: 2px; bottom: 2px; font-size: 9px; background: rgba(0,0,0,0.6); color: #fff; padding: 0 3px; border-radius: 3px; }
+    .cell.drag { outline: 2px solid var(--accent); }
+    @media (max-width: 600px) { #readout { display: none; } }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+
+  <div id="controls" class="panel">
+    <h1>Stock Man</h1>
+    <div class="row" id="anims">
+      <button data-anim="idle" class="on">Idle</button>
+      <button data-anim="walk">Walk</button>
+      <button data-anim="run">Run</button>
+      <button data-anim="jump">Jump</button>
+      <button data-anim="wave">Wave</button>
+      <button data-anim="dance">Dance</button>
+    </div>
+    <div class="row">
+      <button id="orbit" class="on">Auto-orbit</button>
+      <button id="slots-toggle">Photos</button>
+    </div>
+    <div class="hint">Drag to orbit, scroll to zoom. WASD moves, Shift runs, Space jumps.</div>
+  </div>
+
+  <div id="readout" class="panel"></div>
+
+  <div id="slots" class="panel">
+    <div class="row" style="margin-top:0; align-items:center; justify-content:space-between">
+      <strong>Photo slots</strong>
+      <div class="row" style="margin-top:0">
+        <label class="btn">Load folder<input id="folder" type="file" webkitdirectory multiple accept="image/*" hidden></label>
+        <button id="slots-close">Close</button>
+      </div>
+    </div>
+    <p class="hint">Click a slot or drop an image on it. Each body part picks the photo for the angle the camera is seeing it from. Right-side views reuse the left-side photo flipped if you leave them empty. Folder files must be named like <code>head_front-left.jpg</code>.</p>
+    <table id="slot-table"></table>
+  </div>
+
+  <script type="module" src="rig.js"></script>
+</body>
+</html>
