@@ -9,7 +9,7 @@ Some notes have snuck into the song that don't belong in the key. Your job is to
 - **You're standing on the staff.** The level is nine glass floors stacked on top of each other, one for each line and space of the treble staff (E4 at the bottom up to F5 at the top). Whatever floor you're on is the note you play.
 - **You can only hit notes on your own floor.** Your shots can't go through the floor above you or the one below.
 - **Red notes are off-key.** Each one is labelled with its note (like C♯ in C major, or F♮ in G major), and touching one drains your harmony. Beat one and it slides back to the right note and floats away.
-- **Gold notes belong in the key.** Leave them alone. Shooting one costs you harmony.
+- **Gold notes belong in the key, and they need protecting.** Shooting one costs you harmony. Off-key notes hunt them down, and a gold note that's caught for a couple of seconds turns off-key itself, which means one more note to beat. Gold notes try to run, and new ones show up every so often. The end-of-level screen shows how many you kept in tune.
 - From level 3 on, off-key notes can hop between floors to chase you.
 
 ### Sharps, flats and naturals
@@ -32,7 +32,7 @@ Each kind of note behaves according to its length. Most of them move in time wit
 | Eighth | 2 | Zigzags in twice a beat. |
 | Sixteenth | 1 | Tiny and fast, and they come in pairs. |
 
-There are five levels: C major, G major, F major, D major and E♭ major. New note types show up as you go, and the screen before each level lists what you're up against. The HUD shows the notes in the current key, and the little staff in the corner shows which floors still have off-key notes on them.
+There are five levels: C major, G major, F major, D major and E♭ major. New note types show up as you go, and the screen before each level lists what you're up against. The HUD shows the notes in the current key, and the little staff in the corner shows which floors still have off-key notes on them, where the gold notes are, and flashes when one is under attack.
 
 The background music is generated as you play and stays in the level's key, which is why the off-key notes sound so wrong against it. It speeds up a little each level.
 

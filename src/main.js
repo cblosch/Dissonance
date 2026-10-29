@@ -27,6 +27,10 @@ const PITY_DELAY = 3;          // wait before helping a player who's stuck
 const ENEMY_SHOT_SPEED = 10;
 const ENEMY_SHOT_DAMAGE = 10;
 const AURA_DPS = 10;
+const CORRUPT_TIME = 2.5;      // seconds of contact before a gold note turns off-key
+const GOLD_INTERVAL = 15;      // seconds between new gold notes appearing
+const GOLD_EXTRA = 3;          // how many gold notes above the level's start count can exist
+const CALM_TYPES = ['whole', 'half', 'quarter', 'eighth'];
 
 const COLORS = {
   player: 0x5ff3ff,
@@ -201,6 +205,9 @@ const state = {
   sharpTime: 0,         // seconds of sharpened shots left
   pityTimer: 0,
   pickupTimer: 0,
+  goldTimer: 0,
+  goldTotal: 0,         // gold notes that existed this level, for the results screen
+  goldLost: 0,
 };
 
 let levelGroup = new THREE.Group();
@@ -240,6 +247,9 @@ function buildLevel(index) {
   state.sharpTime = 0;
   state.pityTimer = 0;
   state.pickupTimer = 0;
+  state.goldTimer = 0;
+  state.goldTotal = level.consonant;
+  state.goldLost = 0;
 
   camera.position.set(0, floorY(state.floor) + EYE, ARENA - 4);
 
@@ -289,9 +299,8 @@ function buildLevel(index) {
       }
     }
   }
-  const calmTypes = ['whole', 'half', 'quarter', 'eighth'];
   for (let k = 0; k < level.consonant; k++) {
-    spawnNote(randomFloor(), false, calmTypes[randInt(0, calmTypes.length - 1)]);
+    spawnNote(randomFloor(), false, CALM_TYPES[randInt(0, CALM_TYPES.length - 1)]);
   }
 
   // Pickups: one of each near the start, the rest scattered
@@ -367,6 +376,7 @@ function spawnNote(floor, dissonant, type, at = null) {
     target: freeSpot(floor, false), wobble: Math.random() * 10,
     hopTimer: rand(6, 12), hop: null,
     lastBar: -1, barOffset: randInt(0, 1),
+    corruptT: 0, spawnT: 1,
     hum: dissonant ? Audio.createHum(freqOf(midi)) : null,
   };
   enemies.push(enemy);
@@ -718,11 +728,25 @@ function updateEnemies(dt, time) {
     const dist = Math.hypot(g.position.x - px, g.position.z - pz);
     e.slowT = Math.max(0, e.slowT - dt);
 
-    // Pick where to go: chase the player, or wander when they're elsewhere
+    // Pick where to go. Off-key notes chase the player, but go after a gold
+    // note instead when the player isn't around or the gold note is closer.
+    // Gold notes wander, and run from any off-key note that gets near.
     let speed = e.dissonant ? state.level.speed * T.speed * 0.5 : 1.2 * T.speed;
     let tx = e.target.x, tz = e.target.z;
     let stopAt = 0.9;
-    if (e.dissonant && sameFloor && dist < 24) {
+    const prey = e.dissonant ? nearestNote(e, false, 14) : null;
+    const chasingPlayer = e.dissonant && sameFloor && dist < 24;
+    const threat = !e.dissonant ? nearestNote(e, true, 6) : null;
+    if (prey && (!chasingPlayer || prey.d < dist * 0.6)) {
+      speed = state.level.speed * T.speed * lungeFactor(T.sub) * 0.8;
+      tx = prey.note.group.position.x; tz = prey.note.group.position.z;
+      stopAt = 0.6;
+    } else if (threat) {
+      const tp = threat.note.group.position;
+      tx = g.position.x * 2 - tp.x; tz = g.position.z * 2 - tp.z;
+      speed = 1.7;
+      stopAt = 0;
+    } else if (chasingPlayer) {
       speed = state.level.speed * T.speed * lungeFactor(T.sub);
       tx = px; tz = pz;
       if (T.shoots) {
@@ -810,9 +834,81 @@ function updateEnemies(dt, time) {
       Audio.updateHum(e.hum, g.position, sameFloor ? 1 : 0.18);
     }
   }
+  updateCorruption(dt);
   enemies = enemies.filter((e) => !e.removed);
 
   if (contactDps > 0 && !state.shift) hurt(contactDps * dt);
+}
+
+// Closest live note on the same floor that is off-key (or gold), within range
+function nearestNote(from, dissonant, range) {
+  let best = null;
+  for (const o of enemies) {
+    if (o === from || !o.alive || o.dissonant !== dissonant || o.floor !== from.floor || o.hop || o.removed) continue;
+    const d = Math.hypot(o.group.position.x - from.group.position.x, o.group.position.z - from.group.position.z);
+    if (d < range && (!best || d < best.d)) best = { note: o, d };
+  }
+  return best;
+}
+
+// Gold notes in contact with an off-key note slowly turn red. Let it finish
+// and the gold note becomes another off-key note.
+function updateCorruption(dt) {
+  for (const gn of enemies) {
+    if (gn.dissonant || !gn.alive || gn.removed) continue;
+    if (gn.spawnT < 1) {
+      gn.spawnT = Math.min(1, gn.spawnT + dt / 0.8);
+      gn.group.scale.setScalar(gn.spawnT * gn.spawnT * (3 - 2 * gn.spawnT));
+    }
+    const attacker = nearestNote(gn, true, 1.5 * Math.max(gn.T.scale, 1));
+    if (attacker) {
+      if (gn.corruptT === 0 && gn.floor !== state.floor) {
+        toast(`A gold note on ${floorName(gn.floor)} is being knocked out of tune`);
+      }
+      gn.corruptT += dt;
+    } else {
+      gn.corruptT = Math.max(0, gn.corruptT - dt * 0.5);
+    }
+    const k = Math.min(1, gn.corruptT / CORRUPT_TIME);
+    gn.mat.color.setHex(COLORS.good).lerp(new THREE.Color(COLORS.bad), k);
+    gn.mat.emissive.copy(gn.mat.color);
+    gn.body.position.set(rand(-0.06, 0.06) * k, rand(-0.06, 0.06) * k, 0);
+    if (gn.corruptT >= CORRUPT_TIME) corruptNote(gn);
+  }
+}
+
+function corruptNote(gn) {
+  gn.alive = false;
+  gn.removed = true;
+  levelGroup.remove(gn.group);
+  const pos = gn.group.position.clone();
+  const bad = spawnNote(gn.floor, true, gn.type, pos);
+  bad.group.position.copy(gn.group.position);
+  state.goldLost++;
+  Audio.glide(freqOf(gn.midi), freqOf(bad.midi), 0.6, 0.12, 'sawtooth');
+  burst(pos, COLORS.bad, 16, 5);
+  toast(`A gold ${noteName(gn.letter, gn.acc)} was knocked out of tune and turned into ${noteName(bad.letter, bad.acc, null, bad.acc === 0)}`);
+  updateHud();
+}
+
+// New gold notes drift in over time, up to a cap
+function updateGoldSpawns(dt) {
+  state.goldTimer += dt;
+  if (state.goldTimer < GOLD_INTERVAL) return;
+  state.goldTimer = 0;
+  const gold = enemies.filter((e) => !e.dissonant && e.alive && !e.removed).length;
+  if (gold >= state.level.consonant + GOLD_EXTRA) return;
+  const floor = randInt(state.level.minFloor, state.level.maxFloor);
+  const e = spawnNote(floor, false, CALM_TYPES[randInt(0, CALM_TYPES.length - 1)]);
+  e.spawnT = 0;
+  e.group.scale.setScalar(0.01);
+  state.goldTotal++;
+  if (floor === state.floor) Audio.heal(freqOf(e.midi));
+}
+
+function floorName(i) {
+  const { letter, octave } = STAFF[i];
+  return noteName(letter, state.scale.sig[letter] || 0, octave);
 }
 
 function hurt(amount) {
@@ -953,6 +1049,9 @@ function updatePickups(dt, time) {
   state.pickupTimer += dt;
   if (state.pickupTimer > PICKUP_INTERVAL) {
     state.pickupTimer = 0;
+  state.goldTimer = 0;
+  state.goldTotal = level.consonant;
+  state.goldLost = 0;
     if (pickups.filter((p) => p.kind !== 'natural').length < state.level.pickups) spawnRandomPickup();
   }
 
@@ -1058,19 +1157,26 @@ function drawStaffMap() {
   const counts = new Array(STAFF.length).fill(0);
   for (const e of enemies) if (e.dissonant && e.alive) counts[e.floor]++;
   for (let i = 0; i < STAFF.length; i++) {
-    for (let k = 0; k < Math.min(counts[i], 6); k++) noteAt(62 + k * 16, i, '#ff3d6e');
-    if (counts[i] > 6) {
+    for (let k = 0; k < Math.min(counts[i], 5); k++) noteAt(58 + k * 14, i, '#ff3d6e');
+    if (counts[i] > 5) {
       ctx.fillStyle = '#ff3d6e'; ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(`+${counts[i] - 6}`, 158, yOf(i) + 4);
+      ctx.fillText(`+${counts[i] - 5}`, 124, yOf(i) + 4);
     }
+  }
+  // Gold notes, flashing red while one is being knocked out of tune
+  const goldSlots = new Array(STAFF.length).fill(0);
+  const blink = Math.floor(performance.now() / 200) % 2 === 0;
+  for (const e of enemies) {
+    if (e.dissonant || !e.alive || e.removed || goldSlots[e.floor] >= 3) continue;
+    noteAt(148 + goldSlots[e.floor]++ * 8, e.floor, e.corruptT > 0 && blink ? '#ff3d6e' : '#ffd36b', 3.5);
   }
   ctx.font = 'bold 12px "DejaVu Sans", sans-serif';
   for (const p of pickups) {
     const style = PICKUP_STYLE[p.kind];
     const slot = pickups.filter((q) => q.floor === p.floor).indexOf(p);
-    if (slot > 3) continue;
+    if (slot > 2) continue;
     ctx.fillStyle = style.css;
-    ctx.fillText(style.glyph, 174 + slot * 9, yOf(p.floor) + 4);
+    ctx.fillText(style.glyph, 176 + slot * 9, yOf(p.floor) + 4);
   }
 }
 
@@ -1165,6 +1271,7 @@ function levelComplete() {
     showCard(
       `<h1>IN TUNE</h1>
        <p class="tag">You cleared every level.</p>
+       <p>${goldSummary()}</p>
        <p>The whole song is back in key. Thanks for playing!</p>`,
       [['Play again', () => startLevel(0)]],
     );
@@ -1173,9 +1280,16 @@ function levelComplete() {
   showCard(
     `<h2>Nice work</h2>
      <p>${state.level.key} is back in tune.</p>
+     <p>${goldSummary()}</p>
      <p>Up next: <b>${LEVELS[next].key}</b></p>`,
     [['Next level', () => startLevel(next)], ['Replay this one', () => startLevel(state.levelIndex), true]],
   );
+}
+
+function goldSummary() {
+  const kept = state.goldTotal - state.goldLost;
+  if (state.goldLost === 0) return `You kept all <b class="good">${kept} gold notes</b> in tune.`;
+  return `You kept <b class="good">${kept} of ${state.goldTotal} gold notes</b> in tune.`;
 }
 
 function gameOver() {
@@ -1213,6 +1327,7 @@ function frame() {
     updateWaves(dt);
     updateBuff();
     updatePickups(dt, time);
+    updateGoldSpawns(dt);
     updateParticles(dt);
 
     state.hurtTimer = Math.max(0, state.hurtTimer - dt);
