@@ -1,5 +1,6 @@
-import { h, clear, toast, field, MODE } from "./ui.js";
-import { init, createGame, gameInfo, joinGame, enter, myGames, forget, onError, isArtifact } from "./transport.js";
+import { h, clear, toast, field, select, MODE } from "./ui.js";
+import { init, createGame, gameInfo, joinGame, enter, myGames, forget, onError, isArtifact, listLibrary } from "./transport.js";
+import { libraryPanel, strip } from "./library.js";
 import { loadCore } from "./data.js";
 
 const app = document.getElementById("app");
@@ -58,6 +59,7 @@ async function landing(error) {
   const name = h("input", { id: "new-name", placeholder: "e.g. The Gloomwood Expedition", autocomplete: "off" });
   const code = h("input", { id: "join-code", placeholder: "ABC123", maxlength: 6, autocomplete: "off", autocapitalize: "characters", style: { textTransform: "uppercase" } });
   const recentBox = h("div", {});
+  let gmless = false;
   app.append(
     h("div", { class: "landing" },
       h("header", { class: "hero" },
@@ -65,17 +67,23 @@ async function landing(error) {
         h("p", {}, "Run Pathfinder Second Edition (Remaster) games for up to six players and a GM: shared maps, handouts, a character builder and GM tools in one place.")),
       error ? h("p", { class: "error" }, error) : null,
       recentBox,
+      libraryPanel(app, { refresh: () => landing() }),
       h("div", { class: "cards" },
         h("section", { class: "card" },
-          h("h2", {}, "I'm the GM"),
-          h("p", {}, isArtifact
-            ? "Start a new game. You'll get a six-letter code to give your players."
-            : "Start a new game. You'll get a GM link (keep it private) and a join code for your players."),
+          h("h2", {}, "Start a game"),
           field("Campaign name", name),
+          h("div", { class: "mode-pick", role: "radiogroup" },
+            h("label", { class: "mode-opt" }, h("input", { type: "radio", name: "mode", value: "gm", checked: true, onchange: () => (gmless = false) }),
+              h("span", {}, h("strong", {}, "I'll be the GM"), h("small", {}, isArtifact ? "You run the game; players join with a code." : "You get a private GM link and a join code for players."))),
+            h("label", { class: "mode-opt" }, h("input", { type: "radio", name: "mode", value: "nogm", onchange: () => (gmless = true) }),
+              h("span", {}, h("strong", {}, "No GM"), h("small", {}, "Everyone plays and shares the GM's jobs: the map reveals as you explore, enemies take their own turns, and an oracle or the AI narrates.")))),
           h("button", { class: "primary", onclick: async (e) => {
             e.target.disabled = true;
-            try { const r = await createGame(name.value.trim()); go("gm", r.code, { key: r.key, role: "gm" }); }
-            catch (err) { toast(err.message, "error"); e.target.disabled = false; }
+            try {
+              const r = await createGame(name.value.trim(), { gmless });
+              if (r.gmless) go("join", r.code);
+              else go("gm", r.code, { key: r.key, role: "gm" });
+            } catch (err) { toast(err.message, "error"); e.target.disabled = false; }
           } }, "Create game")),
         h("section", { class: "card" },
           h("h2", {}, "I'm a player"),
@@ -83,7 +91,7 @@ async function landing(error) {
           field("Join code", code),
           h("button", { class: "primary", onclick: () => code.value.trim() && go("join", code.value.trim().toUpperCase()) }, "Find game"))),
       isArtifact
-        ? h("p", { class: "hint" }, "Everyone plays from this same page while signed in to claude.ai. The GM's game runs on the GM's screen, so keep it open during the session; players' actions go through as soon as it is.")
+        ? h("p", { class: "hint" }, "Everyone plays from this same page while signed in to claude.ai. In a GM game, the GM's screen runs the game, so keep it open during the session. Without a GM, any player's open screen runs it.")
         : h("p", { class: "hint install-hint" }, "On a phone: use your browser's Share or menu button and choose “Add to Home Screen” to open Pathfinder Table like an app."),
       h("footer", {}, "Rules text: Paizo's Pathfinder Remaster books under the ORC license, via the Foundry VTT pf2e dataset. Every rule links to ",
         h("a", { href: "https://2e.aonprd.com/", target: "_blank", rel: "noopener" }, "Archives of Nethys"), " for checking.")));
@@ -94,7 +102,7 @@ async function landing(error) {
         h("h2", {}, "Your games"),
         h("ul", { class: "plain" }, games.slice(0, 10).map((g) => h("li", { class: "row" },
           h("button", { class: "link strong", onclick: () => go(g.role === "gm" ? "gm" : "play", g.code, {}) }, `${g.name || "Untitled"} `, h("span", { class: "code" }, g.code)),
-          h("span", { class: "tag" }, g.role === "gm" ? "GM" : "Player"),
+          h("span", { class: "tag" }, g.role === "gm" ? "GM" : g.gmless ? "Player · no GM" : "Player"),
           h("span", { class: "spacer" }),
           h("button", { class: "small", onclick: async () => { await forget(g.code); landing(); } }, "Remove"))))));
     }
@@ -109,6 +117,9 @@ async function joinScreen(code) {
   const mine = info.slots.find((s) => s.mine);
   if (mine) return go("play", code, {});
   const name = h("input", { id: "player-name", placeholder: "Your name", autocomplete: "nickname" });
+  let lib = [];
+  try { lib = await listLibrary(); } catch {}
+  const charSel = select([{ value: "", label: "Build one after joining" }, ...lib.map((c) => ({ value: c.libId, label: `${c.name || "Unnamed"} (level ${c.level} ${c.ancestry} ${c.class})` }))], "", () => {}, { id: "join-char" });
   let chosen = info.slots.find((s) => s.type === "open")?.index;
   const seats = h("div", { class: "seats" });
   const drawSeats = () => {
@@ -124,14 +135,17 @@ async function joinScreen(code) {
   app.append(h("div", { class: "landing" },
     h("section", { class: "card" },
       h("h2", {}, `Join “${info.name}”`), h("p", { class: "muted" }, `Code ${info.code}`),
+      info.gmless ? h("p", { class: "hint" }, "This game has no GM: everyone at the table shares the map, enemies and story.") : null,
       field("Your name", name),
-      h("h3", {}, "Pick a seat"), info.slots.length ? seats : h("p", { class: "muted" }, "The GM hasn't opened this game yet. You can still ask to join; you'll get a seat when they do."),
+      field("Character", charSel, lib.length ? "Bring one of your saved characters, or build one in the game." : "Saved characters from My characters show up here."),
+      h("h3", {}, "Pick a seat"), info.slots.length ? seats : h("p", { class: "muted" }, info.gmless ? "Nobody's at this table yet. Join to take the first seat." : "The GM hasn't opened this game yet. You can still ask to join; you'll get a seat when they do."),
       h("div", { class: "row" },
         h("button", { onclick: () => goHome() }, "Back"),
         h("button", { class: "primary", onclick: async (e) => {
           e.target.disabled = true;
           try {
-            const r = await joinGame(code, name.value.trim(), chosen, info.name);
+            const picked = lib.find((c) => c.libId === charSel.value);
+            const r = await joinGame(code, name.value.trim(), chosen ?? 0, info.name, picked ? strip(picked) : null);
             go("play", code, { token: r.token });
           } catch (err) { toast(err.message, "error"); e.target.disabled = false; }
         } }, "Join game")),

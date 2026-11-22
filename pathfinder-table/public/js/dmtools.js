@@ -22,7 +22,7 @@ const THEME_TRAITS = {
   tavern: ["humanoid", "human"],
 };
 
-export function encounterBuilder(state, { getActiveMap } = {}) {
+export function encounterBuilder(state, { getActiveMap, onSpawn } = {}) {
   const enc = []; // {creature, count}
   let lvl = +state.plot.partyLevel || 1;
   let size = partySize(state);
@@ -56,6 +56,10 @@ export function encounterBuilder(state, { getActiveMap } = {}) {
         h("td", {}, `lvl ${e.creature.level}`), h("td", {}, `${creatureXP(e.creature.level, lvl) * e.count} XP`),
         h("td", {}, h("button", { class: "icon", onclick: () => { enc.splice(i, 1); drawEnc(); } }, "✕")))))),
       h("p", {}, h("strong", {}, `${xp} XP — ${threatFor(xp, size)}`), h("small", { class: "muted" }, ` (party of ${size} at level ${lvl}: ${budget.map((b) => `${b.threat} ${b.xp}`).join(", ")})`)),
+      enc.length && onSpawn ? h("div", { class: "row wrap" },
+        h("button", { class: "primary", onclick: async () => { await onSpawn(enc.map((e) => ({ name: e.creature.name, level: e.creature.level, hp: e.creature.hp, ac: e.creature.ac, perception: e.creature.perception, size: e.creature.size, strikes: e.creature.strikes, count: e.count }))); enc.length = 0; drawEnc(); } }, "Start the fight"),
+        h("button", { onclick: () => { enc.length = 0; drawEnc(); } }, "Clear"),
+        h("p", { class: "hint" }, "Enemies appear near the party, join initiative, and can take their own turns from the initiative list.")) :
       enc.length ? h("div", { class: "row wrap" },
         h("button", { class: "primary", onclick: () => toInitiative(false) }, "Add to initiative"),
         h("button", { onclick: () => toInitiative(true) }, "Add hidden"),
@@ -94,7 +98,8 @@ export function encounterBuilder(state, { getActiveMap } = {}) {
     const all = await load("creatures");
     const loc = suggestTheme.value;
     const traits = THEME_TRAITS[loc] || [];
-    const pool = all.filter((c) => c.rarity === "common" && c.level >= lvl - 3 && c.level <= lvl + 2 && (!traits.length || c.traits.some((t) => traits.includes(t))));
+    let pool = all.filter((c) => c.rarity === "common" && c.level >= lvl - 4 && c.level <= lvl + 2 && (!traits.length || c.traits.some((t) => traits.includes(t))));
+    if (!pool.length) pool = all.filter((c) => c.rarity === "common" && c.level >= lvl - 4 && c.level <= lvl + 2);
     const target = budgetFor(size).find((b) => b.threat === threat).xp;
     enc.length = 0;
     let xp = 0;
@@ -110,6 +115,11 @@ export function encounterBuilder(state, { getActiveMap } = {}) {
       const e = enc.find((x) => x.creature.name === ok.name);
       e ? e.count++ : enc.push({ creature: ok, count: 1 });
       xp += creatureXP(ok.level, lvl);
+    }
+    if (!enc.length) {
+      // tiny parties: the budget is below every creature's XP, so take the weakest fit
+      const weakest = pool.slice().sort((x, y) => creatureXP(x.level, lvl) - creatureXP(y.level, lvl))[0];
+      if (weakest) enc.push({ creature: weakest, count: 1 });
     }
     drawEnc();
   }

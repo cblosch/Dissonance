@@ -59,9 +59,26 @@ function logEntry(l, isDM) {
 export function createInitiativePanel(opts) {
   const inner = h("div", {});
   let state = null;
-  const addRow = opts.isDM ? initiativeAddRow(() => state) : null;
+  const addRow = initiativeAddRow(() => state);
   const el = h("div", { class: "initiative" }, inner, addRow);
-  return { el, update(s) { state = s; clear(inner).append(initiativePanel(s, opts)); } };
+  return { el, update(s) {
+    state = s;
+    // GMs, and every player at a table without a GM, run the tracker
+    const gmTools = opts.isDM || !!s.me?.coGM;
+    addRow.hidden = !gmTools;
+    clear(inner).append(initiativePanel(s, { ...opts, isDM: gmTools, isPlayer: !opts.isDM }));
+  } };
+}
+
+// Let the engine play an enemy's turn against a random conscious party member
+export function runEnemyTurn(state, entry) {
+  const data = coreData();
+  const targets = state.slots.filter((s) => s.characterId && state.characters[s.characterId]).map((s) => {
+    const c = state.characters[s.characterId];
+    const comp = computeCharacter(c, data);
+    return { charId: c.id, name: c.name, ac: comp.ac, maxHp: comp.maxHp };
+  });
+  return act("enemyTurn", { entryId: entry.id, targets }).catch((e) => toast(e.message, "error"));
 }
 
 function initiativeAddRow(getState) {
@@ -77,7 +94,7 @@ function initiativeAddRow(getState) {
 // ------------------------------------------------------------
 // Initiative tracker
 // ------------------------------------------------------------
-export function initiativePanel(state, { isDM, onCompanionTurn, onShowCreature }) {
+export function initiativePanel(state, { isDM, isPlayer, onCompanionTurn, onShowCreature }) {
   const ini = state.initiative;
   const data = coreData();
   const box = h("div", {});
@@ -91,7 +108,7 @@ export function initiativePanel(state, { isDM, onCompanionTurn, onShowCreature }
       ini.entries.length ? h("button", { class: "small", onclick: async () => (await confirmDialog("End the encounter and clear initiative?", { ok: "End encounter" })) && act("initiative", { op: "end" }) }, "End") : null));
   }
   // player: roll my initiative
-  if (!isDM) {
+  if (!isDM || isPlayer) {
     const slot = state.slots[state.me.slot];
     const ch = slot?.characterId ? state.characters[slot.characterId] : null;
     if (ch) {
@@ -121,9 +138,10 @@ export function initiativePanel(state, { isDM, onCompanionTurn, onShowCreature }
       isDM ? h("span", { class: "ini-ctl" },
         e.maxHp ? h("input", { type: "number", placeholder: "dmg", title: "Damage (positive) or healing (negative)", class: "num-input", onchange: (ev) => { act("initiative", { op: "update", id: e.id, patch: { hp: Math.max(0, Math.min(e.maxHp, e.hp - +ev.target.value)) } }); } }) : null,
         h("input", { type: "number", inputmode: "numeric", value: e.init, title: "Initiative", class: "num-input", onchange: (ev) => act("initiative", { op: "update", id: e.id, patch: { init: +ev.target.value } }) }),
-        h("button", { class: "icon", title: "Conditions", onclick: async () => { const c = await promptDialog(`Conditions on ${e.name}`, (e.conditions || []).join(", "), "Conditions (comma separated, e.g. frightened 1, off-guard)"); if (c !== null) act("initiative", { op: "update", id: e.id, patch: { conditions: c.split(",").map((x) => x.trim()).filter(Boolean) } }); } }, "⚑"),
+        isPlayer && e.kind !== "enemy" ? null : h("button", { class: "icon", title: "Conditions", onclick: async () => { const c = await promptDialog(`Conditions on ${e.name}`, (e.conditions || []).join(", "), "Conditions (comma separated, e.g. frightened 1, off-guard)"); if (c !== null) act("initiative", { op: "update", id: e.id, patch: { conditions: c.split(",").map((x) => x.trim()).filter(Boolean) } }); } }, "⚑"),
         e.hidden ? h("button", { class: "icon", title: "Reveal", onclick: () => act("initiative", { op: "update", id: e.id, patch: { hidden: false } }) }, "👁") : null,
         isCompanion && onCompanionTurn ? h("button", { class: "icon", title: "Suggest companion turn", onclick: () => onCompanionTurn(pc) }, "🤖") : null,
+        e.kind === "enemy" && e.stat?.strikes?.length ? h("button", { class: "small", title: "Roll this enemy's attacks against a party member and apply the damage", onclick: () => runEnemyTurn(state, e) }, "⚔ Enemy turn") : null,
         h("button", { class: "icon", title: "Remove", onclick: () => act("initiative", { op: "remove", id: e.id }) }, "✕")) : null));
   });
   box.append(list);

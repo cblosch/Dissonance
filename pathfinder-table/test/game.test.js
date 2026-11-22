@@ -99,3 +99,28 @@ test("AI companions fill open seats and enemy HP is hidden from players", () => 
   assert.equal(e.ac, undefined);
   assert.equal(e.hpState, "unhurt");
 });
+
+test("GM-less tables: players share GM tools, map reveals itself, enemies act", () => {
+  const g = createGame("NOGMXX", "Shared", { gmless: true });
+  const p1 = joinGame(g, { name: "Ann" }), a1 = authFor(g, { token: p1.token });
+  applyAction(g, a1, "saveCharacter", { character: { name: "Ann's hero", level: 1 } });
+  // a corridor with a wall: the far room stays hidden until someone walks over
+  const cells = "......#......" ;
+  const id = applyAction(g, a1, "saveMap", { map: { name: "m", w: 13, h: 1, cells, tokens: [] }, activate: true });
+  applyAction(g, a1, "placeParty");
+  const m = g.maps[0];
+  assert.equal(m.tokens.length, 1);
+  assert.ok(m.fog.startsWith("1111111"), "party's side revealed");
+  assert.equal(m.fog[10], "0", "beyond the wall stays hidden");
+  applyAction(g, a1, "spawnEncounter", { creatures: [{ name: "Goblin Warrior", level: -1, hp: 6, ac: 16, perception: 2, count: 2, strikes: [{ name: "Dogslicer", bonus: 7, damage: "1d6 slashing", traits: ["agile"] }] }] });
+  const enemies = g.initiative.entries.filter((e) => e.kind === "enemy");
+  assert.equal(enemies.length, 2);
+  assert.ok(g.initiative.active);
+  const v = viewFor(g, a1);
+  assert.equal(v.initiative.entries[0].hp !== undefined || v.initiative.entries[1].hp !== undefined, true, "players see enemy HP without a GM");
+  for (let i = 0; i < 20; i++) applyAction(g, a1, "enemyTurn", { entryId: enemies[0].id, targets: [{ charId: g.slots[0].characterId, name: "Ann's hero", ac: 10, maxHp: 500 }] });
+  assert.ok(g.characters[g.slots[0].characterId].live.hp < 500, "damage applied");
+  // normal games keep these to the GM
+  const n = createGame("NORMAL", "x"), pn = joinGame(n, { name: "Bo" });
+  assert.throws(() => applyAction(n, authFor(n, { token: pn.token }), "spawnEncounter", { creatures: [] }), /GM/);
+});

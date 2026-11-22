@@ -404,3 +404,24 @@ body.print-handout { background: #fff; padding: 2em; }
 }
 .install-hint { display: none; }
 @media (max-width: 760px) { .install-hint { display: block; } }
+
+/* game type choice, character library, GM-less tables */
+.mode-pick { display: flex; flex-direction: column; gap: .4em; margin: .5em 0; }
+.mode-opt { display: flex; gap: .6em; align-items: flex-start; padding: .6em .7em; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel2); cursor: pointer; }
+.mode-opt:has(input:checked) { border-color: var(--accent); background: var(--panel); }
+.mode-opt input { margin-top: .25em; }
+.mode-opt span { display: flex; flex-direction: column; gap: .15em; min-width: 0; }
+.mode-opt small { color: var(--muted); }
+.library { margin: 1em 0; }
+.lib-list { display: flex; flex-direction: column; gap: .4em; margin: .5em 0; }
+.lib-card { display: flex; gap: .6em; align-items: center; padding: .5em .6em; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); width: 100%; text-align: left; white-space: normal; }
+.lib-card.pickable:hover { border-color: var(--accent2); }
+.lib-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.lib-text strong, .lib-text small { overflow: hidden; text-overflow: ellipsis; }
+.solo-builder { max-width: 1200px; margin: 0 auto; }
+.spoiler { margin: .5em 0; padding: .4em .7em; border: 1px dashed var(--line); border-radius: 6px; }
+.spoiler summary { cursor: pointer; color: var(--warn); font-weight: 600; }
+.sheet-lib { margin: .8em 0; }
+.table-tools { margin-bottom: .4em; }
+.story textarea { margin-bottom: .4em; }
+.story .row input { flex: 1; min-width: 10em; }

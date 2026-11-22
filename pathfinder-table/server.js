@@ -98,7 +98,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       let code;
       do code = newCode(); while (games.has(code));
-      const game = createGame(code, String(body.name || "").slice(0, 120));
+      const game = createGame(code, String(body.name || "").slice(0, 120), { gmless: !!body.gmless });
       games.set(code, game);
       save(game);
       return send(res, 200, { code, key: game.dmKey });
@@ -110,7 +110,7 @@ const server = http.createServer(async (req, res) => {
       const sub = parts[3];
 
       if (req.method === "GET" && sub === "info") {
-        return send(res, 200, { code: game.code, name: game.name, slots: game.slots.map((s) => ({ index: s.index, type: s.type, playerName: s.playerName, character: s.characterId ? game.characters[s.characterId]?.name : null })) });
+        return send(res, 200, { code: game.code, name: game.name, gmless: !!game.gmless, slots: game.slots.map((s) => ({ index: s.index, type: s.type, playerName: s.playerName, character: s.characterId ? game.characters[s.characterId]?.name : null })) });
       }
       if (req.method === "POST" && sub === "join") {
         const body = await readBody(req);
@@ -143,7 +143,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true, result: result ?? null });
       }
       if (req.method === "POST" && sub === "ai") {
-        if (auth.role !== "dm") return send(res, 403, { error: "Only the GM can use the assistant." });
+        if (auth.role !== "dm" && !game.gmless) return send(res, 403, { error: "Only the GM can use the assistant." });
         const text = await runAI(game, req.body.task, req.body.prompt);
         return send(res, 200, { text });
       }

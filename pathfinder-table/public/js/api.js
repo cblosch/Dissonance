@@ -18,16 +18,52 @@ const authBody = () => (session.key ? { key: session.key } : { token: session.to
 
 export async function init() { return true; }
 
-export async function createGame(name) {
-  const r = await api("/api/games", { method: "POST", body: { name } });
-  remember(r.code, { key: r.key, name: name || "New Campaign", role: "gm" });
-  return r;
+export async function createGame(name, { gmless = false } = {}) {
+  const r = await api("/api/games", { method: "POST", body: { name, gmless } });
+  // a GM-less game has no GM: its creator joins as a player like everyone else
+  if (!gmless) remember(r.code, { key: r.key, name: name || "New Campaign", role: "gm" });
+  return { ...r, gmless, key: gmless ? undefined : r.key };
 }
 export const gameInfo = (code) => api(`/api/games/${code}/info`);
-export async function joinGame(code, name, slot, gameName) {
+export async function joinGame(code, name, slot, gameName, character) {
   const r = await api(`/api/games/${code}/join`, { method: "POST", body: { name, slot } });
   remember(code, { token: r.token, name: gameName, role: "player" });
+  if (character) await api(`/api/games/${code}/action`, { method: "POST", body: { auth: { token: r.token }, type: "saveCharacter", payload: { character } } });
   return r;
+}
+
+// Put a saved character into a game this device has a seat in.
+export async function assignCharacter(code, character) {
+  const token = recall()[code]?.token;
+  if (!token) throw new Error("You don't have a seat in that game on this device.");
+  await api(`/api/games/${code}/action`, { method: "POST", body: { auth: { token }, type: "saveCharacter", payload: { character } } });
+}
+
+// ---- character library (kept in this browser) ----
+const LIB = "pftable.library";
+const readLib = () => { try { return JSON.parse(localStorage.getItem(LIB) || "{}"); } catch { return {}; } };
+export async function listLibrary() {
+  return Object.values(readLib()).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+}
+export async function saveToLibrary(char) {
+  const lib = readLib();
+  const id = char.libId || `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const { live, slot, id: _gameId, updatedAt, companion, ...build } = char;
+  lib[id] = { ...build, libId: id, savedAt: Date.now() };
+  try { localStorage.setItem(LIB, JSON.stringify(lib)); } catch { throw new Error("This browser won't let the page save data."); }
+  return id;
+}
+export async function deleteFromLibrary(libId) {
+  const lib = readLib();
+  delete lib[libId];
+  try { localStorage.setItem(LIB, JSON.stringify(lib)); } catch {}
+}
+export async function downloadFile(filename, data) {
+  const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 export async function config() {
   try { return await api("/api/config"); } catch { return { ai: false }; }

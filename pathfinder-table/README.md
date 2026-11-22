@@ -50,6 +50,22 @@ The same app adapts to the screen. On phones (up to 760px wide):
 
 Tablets keep the desktop layout with a narrower side panel.
 
+## Games without a GM
+
+Choose **No GM** when starting a game. Everyone joins as a player and the table shares the GM's jobs:
+
+- **Story tab:** roll a random adventure, use the sample one, or have the AI write one. The plot is visible to everyone, with the spoilers folded away. Tap a place to generate its map and put the party there.
+- **Narration:** with AI available, players describe what they do and the AI narrator answers in the chat, calling for checks with level-appropriate DCs. Without AI there's a yes/no oracle (d100 with odds) and a complication table.
+- **Maps** reveal themselves by line of sight as party tokens move.
+- **Fight tab:** pick or suggest an encounter and start it. Enemies appear near the party and join initiative. Anyone can press **Enemy turn** to have an enemy Strike a random party member (attack against AC, damage applied, crits doubled).
+- Any player can run initiative, move enemies, and remove AI companions.
+
+On the hosted page, whichever player's screen is open runs the game. If that player leaves, another open screen takes over within about 30 seconds.
+
+## My characters
+
+Build characters from the start screen before you have a game. They're kept per person: in your claude.ai account on the hosted page, or in this browser on the server version. When joining a game you can bring one. From a character's menu you can send it to a game you're already in, copy it at the next level, duplicate it, or export and import it as a file. In a game, **Save a copy to My characters** keeps your progress, and **Swap in a saved character** replaces your current one.
+
 ## What's in it
 
 ### Seats, players and AI companions
