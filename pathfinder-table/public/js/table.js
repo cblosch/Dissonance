@@ -6,26 +6,11 @@ import { computeCharacter } from "./shared/rules.js";
 // ------------------------------------------------------------
 // Chat, dice and log
 // ------------------------------------------------------------
-export function logPanel(state, { isDM }) {
+export function createLogPanel({ isDM }) {
   const box = h("div", { class: "log" });
-  const me = state.me;
-  for (const l of state.log.slice(-150)) {
-    const time = new Date(l.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    if (l.type === "roll") {
-      box.append(h("div", { class: `log-roll ${l.private ? "private" : ""} ${l.roll.natural === 20 ? "nat20" : l.roll.natural === 1 ? "nat1" : ""}` },
-        h("div", { class: "row between" }, h("strong", {}, l.who), h("small", { class: "muted" }, time)),
-        h("div", {}, l.label || l.roll.expr, l.private ? h("span", { class: "tag" }, isDM ? "secret" : "to GM") : null),
-        h("div", { class: "roll-total" }, h("span", { class: "total" }, l.roll.total), h("small", { class: "muted" }, ` ${l.roll.detail}`)),
-        l.outcome ? h("div", { class: `outcome o${["Critical Failure", "Failure", "Success", "Critical Success"].indexOf(l.outcome)}` }, `${l.outcome} vs DC ${l.dc}`) : null));
-    } else if (l.type === "chat") {
-      box.append(h("div", { class: "log-chat" }, h("strong", {}, l.who, ": "), l.text, h("small", { class: "muted" }, ` ${time}`)));
-    } else {
-      box.append(h("div", { class: "log-system" }, l.text));
-    }
-  }
-  const input = h("input", { placeholder: "Chat, or /r 1d20+5 to roll" });
-  const dc = h("input", { placeholder: "DC", type: "number", style: { width: "4em" }, title: "Optional DC: shows degree of success" });
-  const asSel = isDM ? h("input", { placeholder: "speak as (optional)", style: { width: "9em" } }) : null;
+  const input = h("input", { placeholder: "Chat, or /r 1d20+5 to roll", enterkeyhint: "send" });
+  const dc = h("input", { placeholder: "DC", type: "number", inputmode: "numeric", class: "dc-input", title: "Optional DC: shows degree of success" });
+  const asSel = isDM ? h("input", { placeholder: "speak as…", class: "as-input" }) : null;
   const secret = h("input", { type: "checkbox", title: isDM ? "Secret roll (only the GM sees it)" : "Roll privately to the GM" });
   const send = async () => {
     const v = input.value.trim();
@@ -39,10 +24,54 @@ export function logPanel(state, { isDM }) {
   };
   input.addEventListener("keydown", (e) => e.key === "Enter" && send());
   const quick = h("div", { class: "dice-row" }, ["d4", "d6", "d8", "d10", "d12", "d20", "d100"].map((d) =>
-    h("button", { class: "small", onclick: () => act("roll", { formula: `1${d}`, label: d, private: secret.checked, dc: dc.value || null }).catch((e) => toast(e.message, "error")) }, d)),
+    h("button", { class: "small die", onclick: () => act("roll", { formula: `1${d}`, label: d, private: secret.checked, dc: dc.value || null }).catch((e) => toast(e.message, "error")) }, d)),
     h("label", { class: "check small" }, secret, isDM ? " secret" : " private"), dc);
-  setTimeout(() => (box.scrollTop = box.scrollHeight), 0);
-  return h("div", { class: "log-panel" }, box, quick, h("div", { class: "row" }, asSel, input, h("button", { onclick: send }, "Send")));
+  const el = h("div", { class: "log-panel" }, box, h("div", { class: "log-controls" }, quick, h("div", { class: "row chat-row" }, asSel, input, h("button", { class: "primary", onclick: send }, "Send"))));
+  let lastId = null;
+  function update(state) {
+    const newest = state.log.at(-1)?.id;
+    if (newest === lastId) return;
+    lastId = newest;
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    clear(box);
+    for (const l of state.log.slice(-150)) box.append(logEntry(l, isDM));
+    if (nearBottom || !box.dataset.scrolled) { box.scrollTop = box.scrollHeight; box.dataset.scrolled = "1"; }
+  }
+  // re-pin to bottom when the panel is shown again (e.g. switching to the chat tab on a phone)
+  const scrollDown = () => requestAnimationFrame(() => (box.scrollTop = box.scrollHeight));
+  return { el, update, scrollDown };
+}
+
+function logEntry(l, isDM) {
+  const time = new Date(l.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (l.type === "roll") {
+    return h("div", { class: `log-roll ${l.private ? "private" : ""} ${l.roll.natural === 20 ? "nat20" : l.roll.natural === 1 ? "nat1" : ""}` },
+      h("div", { class: "row between" }, h("strong", {}, l.who), h("small", { class: "muted" }, time)),
+      h("div", {}, l.label || l.roll.expr, l.private ? h("span", { class: "tag" }, isDM ? "secret" : "to GM") : null),
+      h("div", { class: "roll-total" }, h("span", { class: "total" }, l.roll.total), h("small", { class: "muted" }, ` ${l.roll.detail}`)),
+      l.outcome ? h("div", { class: `outcome o${["Critical Failure", "Failure", "Success", "Critical Success"].indexOf(l.outcome)}` }, `${l.outcome} vs DC ${l.dc}`) : null);
+  }
+  if (l.type === "chat") return h("div", { class: "log-chat" }, h("strong", {}, l.who, ": "), l.text, h("small", { class: "muted" }, ` ${time}`));
+  return h("div", { class: "log-system" }, l.text);
+}
+
+// Persistent initiative panel: the list re-renders, the GM's "add" inputs keep what's typed.
+export function createInitiativePanel(opts) {
+  const inner = h("div", {});
+  let state = null;
+  const addRow = opts.isDM ? initiativeAddRow(() => state) : null;
+  const el = h("div", { class: "initiative" }, inner, addRow);
+  return { el, update(s) { state = s; clear(inner).append(initiativePanel(s, opts)); } };
+}
+
+function initiativeAddRow(getState) {
+  const name = h("input", { placeholder: "Name", class: "grow-input" });
+  const init = h("input", { type: "number", inputmode: "numeric", placeholder: "Init", class: "num-input" });
+  const hp = h("input", { type: "number", inputmode: "numeric", placeholder: "HP", class: "num-input" });
+  return h("details", { class: "ini-add" }, h("summary", {}, "Add combatant"),
+    h("div", { class: "row" }, name, init, hp,
+      h("button", { class: "small", onclick: () => { if (!name.value) return; act("initiative", { op: "add", name: name.value, init: +init.value || 0, hp: hp.value ? +hp.value : null, kind: "enemy" }); name.value = ""; init.value = ""; hp.value = ""; } }, "Add")),
+    h("button", { class: "small", onclick: () => addCompanionsToInitiative(getState()) }, "Roll for AI companions"));
 }
 
 // ------------------------------------------------------------
@@ -51,7 +80,7 @@ export function logPanel(state, { isDM }) {
 export function initiativePanel(state, { isDM, onCompanionTurn, onShowCreature }) {
   const ini = state.initiative;
   const data = coreData();
-  const box = h("div", { class: "initiative" });
+  const box = h("div", {});
   const head = h("div", { class: "row between" }, h("h3", {}, ini.active ? `Round ${ini.round}` : "Initiative"));
   box.append(head);
   if (isDM) {
@@ -90,22 +119,14 @@ export function initiativePanel(state, { isDM, onCompanionTurn, onShowCreature }
       h("small", { class: "muted" }, hpText),
       (e.conditions || []).length ? h("small", { class: "conds" }, e.conditions.join(", ")) : null,
       isDM ? h("span", { class: "ini-ctl" },
-        e.maxHp ? h("input", { type: "number", placeholder: "dmg", title: "Damage (positive) or healing (negative)", style: { width: "4.5em" }, onchange: (ev) => { act("initiative", { op: "update", id: e.id, patch: { hp: Math.max(0, Math.min(e.maxHp, e.hp - +ev.target.value)) } }); } }) : null,
-        h("input", { type: "number", value: e.init, title: "Initiative", style: { width: "3.5em" }, onchange: (ev) => act("initiative", { op: "update", id: e.id, patch: { init: +ev.target.value } }) }),
+        e.maxHp ? h("input", { type: "number", placeholder: "dmg", title: "Damage (positive) or healing (negative)", class: "num-input", onchange: (ev) => { act("initiative", { op: "update", id: e.id, patch: { hp: Math.max(0, Math.min(e.maxHp, e.hp - +ev.target.value)) } }); } }) : null,
+        h("input", { type: "number", inputmode: "numeric", value: e.init, title: "Initiative", class: "num-input", onchange: (ev) => act("initiative", { op: "update", id: e.id, patch: { init: +ev.target.value } }) }),
         h("button", { class: "icon", title: "Conditions", onclick: () => { const c = prompt("Conditions (comma separated)", (e.conditions || []).join(", ")); if (c !== null) act("initiative", { op: "update", id: e.id, patch: { conditions: c.split(",").map((x) => x.trim()).filter(Boolean) } }); } }, "⚑"),
         e.hidden ? h("button", { class: "icon", title: "Reveal", onclick: () => act("initiative", { op: "update", id: e.id, patch: { hidden: false } }) }, "👁") : null,
         isCompanion && onCompanionTurn ? h("button", { class: "icon", title: "Suggest companion turn", onclick: () => onCompanionTurn(pc) }, "🤖") : null,
         h("button", { class: "icon", title: "Remove", onclick: () => act("initiative", { op: "remove", id: e.id }) }, "✕")) : null));
   });
   box.append(list);
-  if (isDM) {
-    const name = h("input", { placeholder: "Name", style: { width: "8em" } });
-    const init = h("input", { type: "number", placeholder: "Init", style: { width: "4em" } });
-    const hp = h("input", { type: "number", placeholder: "HP", style: { width: "4em" } });
-    box.append(h("div", { class: "row" }, name, init, hp,
-      h("button", { class: "small", onclick: () => { if (!name.value) return; act("initiative", { op: "add", name: name.value, init: +init.value || 0, hp: hp.value ? +hp.value : null, kind: "enemy" }); name.value = ""; init.value = ""; hp.value = ""; } }, "Add")),
-      h("button", { class: "small", onclick: () => addCompanionsToInitiative(state) }, "Roll for AI companions"));
-  }
   return box;
 }
 

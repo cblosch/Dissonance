@@ -1,4 +1,4 @@
-import { h, clear, toast, select } from "./ui.js";
+import { h, clear, toast, select, isMobile } from "./ui.js";
 
 // ---------------------------------------------------------------
 // Terrain palette (one character per 5-foot square)
@@ -392,18 +392,57 @@ export function createMapView({ isDM, mySlot = null, onTokenMove, onFog, onPaint
   const status = h("span", { class: "map-status muted" });
 
   const toolDefs = isDM
-    ? [["move", "✋ Move"], ["reveal", "☀ Reveal"], ["hide", "☾ Hide"], ["room", "▣ Reveal room"], ["paint", "✎ Paint"], ["token", "● Add token"], ["label", "🏷 Label"], ["measure", "📏 Measure"]]
-    : [["move", "✋ Move my token"], ["measure", "📏 Measure"]];
+    ? [["move", "✋", "Move"], ["reveal", "☀", "Reveal"], ["hide", "☾", "Hide"], ["room", "▣", "Reveal room"], ["paint", "✎", "Paint"], ["token", "●", "Add token"], ["label", "🏷", "Label"], ["measure", "📏", "Measure"]]
+    : [["move", "✋", "Move my token"], ["measure", "📏", "Measure"]];
   const toolbar = h("div", { class: "map-toolbar" });
   const brushSel = select(Object.entries(TERRAIN).filter(([k]) => k !== "?").map(([k, v]) => ({ value: k, label: `${k === " " ? "␣" : k}  ${v.name}` })), brush, (v) => { brush = v; });
   const drawToolbar = () => {
     clear(toolbar);
-    for (const [id, label] of toolDefs) toolbar.append(h("button", { class: tool === id ? "active small" : "small", onclick: () => { tool = id; drawToolbar(); } }, label));
-    if (tool === "paint") toolbar.append(brushSel);
-    toolbar.append(h("span", { class: "spacer" }),
-      h("button", { class: "small", onclick: () => { cs = Math.max(10, cs - 4); draw(); } }, "−"),
-      h("button", { class: "small", onclick: () => { cs = Math.min(60, cs + 4); draw(); } }, "+"), status);
+    const tools = h("div", { class: "map-tools" }, toolDefs.map(([id, icon, label]) =>
+      h("button", { class: tool === id ? "active small" : "small", title: label, onclick: () => { tool = id; selected = null; drawToolbar(); draw(); } }, h("span", {}, icon), h("span", { class: "tool-text" }, label))));
+    toolbar.append(tools, tool === "paint" ? brushSel : null,
+      h("div", { class: "map-zoom" },
+        h("button", { class: "small", title: "Zoom out", onclick: () => zoomAt(cs / 1.25) }, "−"),
+        h("button", { class: "small", title: "Fit whole map", onclick: () => fit() }, "Fit"),
+        h("button", { class: "small", title: "Center on my token or the explored area", onclick: () => focus() }, "◎"),
+        h("button", { class: "small", title: "Zoom in", onclick: () => zoomAt(cs * 1.25) }, "+"), status));
   };
+
+  // ---- zoom helpers ----
+  const MIN_CS = 8, MAX_CS = 64;
+  let fitPending = false;
+  function zoomAt(newCs, clientX, clientY) {
+    if (!map) return;
+    const wr = wrap.getBoundingClientRect();
+    const fx = clientX ?? wr.left + wrap.clientWidth / 2, fy = clientY ?? wr.top + wrap.clientHeight / 2;
+    const gx = (wrap.scrollLeft + fx - wr.left) / cs, gy = (wrap.scrollTop + fy - wr.top) / cs;
+    cs = Math.max(MIN_CS, Math.min(MAX_CS, newCs));
+    draw();
+    wrap.scrollLeft = gx * cs - (fx - wr.left);
+    wrap.scrollTop = gy * cs - (fy - wr.top);
+  }
+  function fit() {
+    if (!map || !wrap.clientWidth) return;
+    const byW = (wrap.clientWidth - 2) / map.w, byH = wrap.clientHeight > 100 ? (wrap.clientHeight - 2) / map.h : byW;
+    cs = Math.max(MIN_CS, Math.min(40, Math.floor(Math.min(byW, Math.max(byH, byW * 0.6)))));
+    draw();
+  }
+  // Phones: readable squares, scrolled to your token (players) or the revealed area (GM).
+  function focus() {
+    if (!map || !wrap.clientWidth) return;
+    cs = Math.max(20, Math.min(30, Math.floor(wrap.clientWidth / 14)));
+    let cx = map.w / 2, cy = map.h / 2;
+    const mine = map.tokens.find((t) => t.slot !== null && t.slot !== undefined && t.slot === mySlot);
+    if (mine) { cx = mine.x + 0.5; cy = mine.y + 0.5; }
+    else {
+      let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+      for (let i = 0; i < map.fog.length; i++) if (map.fog[i] === "1") { const x = i % map.w, y = (i / map.w) | 0; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+      if (x1 >= 0) { cx = (x0 + x1 + 1) / 2; cy = (y0 + y1 + 1) / 2; }
+    }
+    draw();
+    wrap.scrollLeft = cx * cs - wrap.clientWidth / 2;
+    wrap.scrollTop = cy * cs - wrap.clientHeight / 2;
+  }
   drawToolbar();
 
   function cellAt(ev) {
@@ -413,15 +452,43 @@ export function createMapView({ isDM, mySlot = null, onTokenMove, onFog, onPaint
     return { x, y, i: y * map.w + x };
   }
   const tokenAt = (x, y) => map.tokens.slice().reverse().find((t) => x >= t.x && x < t.x + (t.size || 1) && y >= t.y && y < t.y + (t.size || 1));
+  const movable = (t) => isDM || (t.slot !== null && t.slot !== undefined && t.slot === mySlot);
+
+  // ---- pointer handling: mouse, pen and touch ----
+  // One finger: tool action, or pan when touching empty space with the move tool.
+  // Two fingers: pinch to zoom (and pan). Tap a token, then tap a square, to move it.
+  let selected = null;
+  const pointers = new Map();
+  let pinch = null, pan = null;
+  const dist = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  const mid = () => { const [a, b] = [...pointers.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
+  const finishPaint = () => {
+    if (!painting) return;
+    painting = false;
+    if (tool === "paint") onPaint && onPaint(map);
+    else onFog && onFog([...paintBuffer], tool === "reveal");
+  };
 
   canvas.addEventListener("pointerdown", (ev) => {
-    const c = cellAt(ev);
-    if (!c) return;
+    pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     canvas.setPointerCapture(ev.pointerId);
+    if (pointers.size === 2) {
+      // second finger: switch to pinch, abandoning any drag in progress
+      finishPaint();
+      drag = null; pan = null;
+      const m = mid();
+      pinch = { d: dist(), cs, x: m.x, y: m.y, sl: wrap.scrollLeft, st: wrap.scrollTop };
+      draw();
+      return;
+    }
+    if (pointers.size > 2) return;
+    const c = cellAt(ev);
+    const startPan = () => { pan = { x: ev.clientX, y: ev.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop, moved: false, cell: c }; };
+    if (!c) return startPan();
     if (tool === "move") {
       const t = tokenAt(c.x, c.y);
-      if (t && (isDM || t.slot === mySlot)) drag = { t, from: { x: t.x, y: t.y }, to: c };
-      else if (t && onTokenClick) onTokenClick(t);
+      if (t && movable(t)) drag = { t, from: { x: t.x, y: t.y }, to: c, moved: false };
+      else startPan();
     } else if (tool === "measure") {
       drag = { measure: true, from: c, to: c };
     } else if (tool === "reveal" || tool === "hide" || tool === "paint") {
@@ -435,30 +502,83 @@ export function createMapView({ isDM, mySlot = null, onTokenMove, onFog, onPaint
       onLabelAdd && onLabelAdd(c.x, c.y);
     }
   });
+
   canvas.addEventListener("pointermove", (ev) => {
+    if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pinch && pointers.size === 2) {
+      const m = mid();
+      const wr = wrap.getBoundingClientRect();
+      const gx = (pinch.sl + pinch.x - wr.left) / pinch.cs, gy = (pinch.st + pinch.y - wr.top) / pinch.cs;
+      cs = Math.max(MIN_CS, Math.min(MAX_CS, pinch.cs * (dist() / pinch.d)));
+      draw();
+      wrap.scrollLeft = gx * cs - (m.x - wr.left);
+      wrap.scrollTop = gy * cs - (m.y - wr.top);
+      return;
+    }
+    if (pan) {
+      const dx = ev.clientX - pan.x, dy = ev.clientY - pan.y;
+      if (Math.abs(dx) + Math.abs(dy) > 6) pan.moved = true;
+      wrap.scrollLeft = pan.sl - dx; wrap.scrollTop = pan.st - dy;
+      return;
+    }
     const c = cellAt(ev);
     hover = c;
-    if (c && map) {
+    if (c && map && ev.pointerType === "mouse") {
       const ch = map.cells[c.i];
       status.textContent = `${c.x},${c.y} · ${TERRAIN[ch]?.name || ""}`;
     }
-    if (drag && c) { drag.to = c; draw(); }
-    else if (painting && c) applyBrush(c);
+    if (drag && c) {
+      if (c.x !== drag.from.x || c.y !== drag.from.y) drag.moved = true;
+      drag.to = c; draw();
+    } else if (painting && c) applyBrush(c);
   });
-  canvas.addEventListener("pointerup", () => {
-    if (drag && drag.t && (drag.to.x !== drag.from.x || drag.to.y !== drag.from.y)) {
+
+  const endPointer = (ev) => {
+    pointers.delete(ev.pointerId);
+    if (pinch) { if (pointers.size < 2) pinch = null; return; }
+    if (pan) {
+      const p = pan; pan = null;
+      if (!p.moved && p.cell && tool === "move") {
+        const t = tokenAt(p.cell.x, p.cell.y);
+        const sel = selected && map.tokens.find((x) => x.id === selected);
+        if (sel && !t) {
+          // tap-to-move: selected token goes to the tapped square
+          sel.x = p.cell.x; sel.y = p.cell.y;
+          onTokenMove && onTokenMove(sel, p.cell.x, p.cell.y);
+          showMove(sel, p.from || null);
+          selected = null;
+        } else if (t && onTokenClick) onTokenClick(t);
+        else selected = null;
+        draw();
+      }
+      return;
+    }
+    if (drag && drag.t) {
       const t = drag.t;
-      t.x = drag.to.x; t.y = drag.to.y;
-      onTokenMove && onTokenMove(t, drag.to.x, drag.to.y);
+      if (drag.moved && (drag.to.x !== drag.from.x || drag.to.y !== drag.from.y)) {
+        t.x = drag.to.x; t.y = drag.to.y;
+        onTokenMove && onTokenMove(t, drag.to.x, drag.to.y);
+        selected = null;
+      } else {
+        // a tap on your own token selects it for tap-to-move
+        selected = selected === t.id ? null : t.id;
+        if (selected) status.textContent = "Tap a square to move there";
+      }
     }
-    if (painting) {
-      painting = false;
-      if (tool === "paint") onPaint && onPaint(map);
-      else onFog && onFog([...paintBuffer], tool === "reveal");
-    }
+    finishPaint();
     drag = null;
     draw();
-  });
+  };
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
+  canvas.addEventListener("wheel", (ev) => {
+    if (!ev.ctrlKey && !ev.metaKey) return; // ctrl/⌘ + wheel or trackpad pinch zooms; plain wheel scrolls
+    ev.preventDefault();
+    zoomAt(cs * (ev.deltaY < 0 ? 1.12 : 1 / 1.12), ev.clientX, ev.clientY);
+  }, { passive: false });
+  function showMove(t) {
+    status.textContent = `${t.label} moved`;
+  }
 
   function applyBrush(c) {
     const rad = tool === "paint" ? 0 : 1;
@@ -475,6 +595,7 @@ export function createMapView({ isDM, mySlot = null, onTokenMove, onFog, onPaint
 
   function draw() {
     if (!map) { canvas.width = 10; canvas.height = 10; return; }
+    if (fitPending && wrap.clientWidth) { fitPending = false; focus(); return; }
     canvas.width = map.w * cs; canvas.height = map.h * cs;
     ctx.font = `${Math.max(9, cs * 0.42)}px system-ui, sans-serif`;
     for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
@@ -512,6 +633,7 @@ export function createMapView({ isDM, mySlot = null, onTokenMove, onFog, onPaint
       ctx.lineWidth = 2; ctx.strokeStyle = t.kind === "pc" ? "#fff" : t.kind === "ally" ? "#9f9" : "#300";
       if (t.hidden) ctx.setLineDash([3, 3]);
       ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+      if (t.id === selected) { ctx.strokeStyle = "#ffd200"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(tx + (cs * size) / 2, ty + (cs * size) / 2, cs * size * 0.5, 0, 7); ctx.stroke(); ctx.lineWidth = 1; }
       ctx.fillStyle = "#fff";
       ctx.textAlign = "center";
       ctx.fillText((t.label || "?").slice(0, size > 1 ? 6 : 2), tx + (cs * size) / 2, ty + (cs * size) / 2 + cs * 0.15);
@@ -532,7 +654,12 @@ export function createMapView({ isDM, mySlot = null, onTokenMove, onFog, onPaint
 
   return {
     el: h("div", { class: "map-view" }, toolbar, wrap),
-    setMap(m) { map = m ? { ...m, tokens: m.tokens.map((t) => ({ ...t })) } : null; if (!drag && !painting) draw(); },
+    setMap(m) {
+      if (m && (m.id || m.seed) !== (map?.id || map?.seed) && isMobile()) { fitPending = true; requestAnimationFrame(() => draw()); }
+      map = m ? { ...m, tokens: m.tokens.map((t) => ({ ...t })) } : null;
+      if (!drag && !painting && !pinch) draw();
+    },
+    fit,
     get map() { return map; },
     setSlot(v) { mySlot = v; },
     redraw: draw,

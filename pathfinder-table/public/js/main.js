@@ -76,6 +76,7 @@ function landing(error) {
           h("a", { href: s.key ? `#/gm/${c}?key=${s.key}` : `#/play/${c}?token=${s.token}` }, `${c} ${s.name ? "· " + s.name : ""}`),
           h("span", { class: "tag" }, s.key ? "GM" : "Player"),
           h("button", { class: "link", onclick: () => { forgetSession(c); route(); } }, "forget"))))) : null,
+      h("p", { class: "hint install-hint" }, "On a phone: use your browser's Share or menu button and choose “Add to Home Screen” to open Pathfinder Table like an app."),
       h("footer", {}, "Rules text: Paizo's Pathfinder Remaster books under the ORC license, via the Foundry VTT pf2e dataset. Every rule links to ",
         h("a", { href: "https://2e.aonprd.com/", target: "_blank", rel: "noopener" }, "Archives of Nethys"), " for checking.")));
 }
@@ -114,4 +115,7 @@ async function joinScreen(code) {
 }
 
 window.addEventListener("hashchange", () => location.reload());
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
 route();

@@ -28,6 +28,19 @@ ANTHROPIC_API_KEY=sk-ant-... npm start
 
 It uses `claude-opus-5-5` by default (`PF_TABLE_MODEL` overrides it). Players never see the assistant. Everything else works without it.
 
+## Phones and tablets
+
+The same app adapts to the screen. On phones (up to 760px wide):
+
+- A bottom navigation bar holds the main tabs (players: Hero, Map, Play, Handouts; GM: Map, Play, Party, Notes). Everything else is under **More**. Header actions (invite link, GM link, export) move into the **⋯** menu.
+- **Play** is a phone-only tab holding the initiative tracker, dice and chat, with an unread badge.
+- Maps: drag empty space to pan, pinch to zoom, and tap a token then tap a square to move it. Maps open zoomed to readable squares and centered on your token (players) or the explored area (GM); **Fit** shows the whole map and **◎** re-centers.
+- The character builder keeps a collapsible stat bar (HP, AC, choices left) above the bottom navigation; tap it to expand the full summary.
+- Dialogs open full screen, inputs use 16px text so iOS doesn't zoom, and layouts respect the notch and home-indicator safe areas.
+- It can be installed: use the browser's **Add to Home Screen**. The app shell and rules data are cached by a service worker; game state always comes live from the server, so an internet connection to your game server is still needed to play.
+
+Tablets keep the desktop layout with a narrower side panel.
+
 ## What's in it
 
 ### Seats, players and AI companions

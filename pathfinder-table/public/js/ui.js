@@ -51,29 +51,76 @@ export function modal(title, body, { wide = false, onClose } = {}) {
   return { close, el: back };
 }
 
+// ---------------------------------------------------------------
+// Phone vs desktop. Layout switches at 760px; listeners re-render on change.
+// ---------------------------------------------------------------
+export const mobileQuery = window.matchMedia("(max-width: 760px)");
+export const isMobile = () => mobileQuery.matches;
+export function onLayoutChange(fn) { mobileQuery.addEventListener("change", fn); }
+
+// Bottom sheet with a list of actions (phone menus, "More" tabs)
+export function actionSheet(title, items) {
+  const close = () => back.remove();
+  const back = h("div", { class: "sheet-back", onclick: (e) => e.target === back && close() },
+    h("div", { class: "action-sheet" },
+      title ? h("div", { class: "as-title" }, title) : null,
+      items.filter(Boolean).map((it) => it.href
+        ? h("a", { class: `as-item ${it.active ? "active" : ""}`, href: it.href, download: it.download || null, onclick: close }, it.icon ? h("span", { class: "as-icon" }, it.icon) : null, it.label)
+        : h("button", { class: `as-item ${it.active ? "active" : ""}`, onclick: () => { close(); it.onClick(); } },
+          it.icon ? h("span", { class: "as-icon" }, it.icon) : null, it.label, it.badge ? h("span", { class: "badge" }, it.badge) : null)),
+      h("button", { class: "as-item cancel", onclick: close }, "Close")));
+  document.body.append(back);
+  return { close };
+}
+
+// Tabs. On desktop: a top bar with every tab. On phones: a fixed bottom bar
+// with the `primary` tabs plus "More", which opens the rest in a sheet.
+// def: { id, label, icon, render, primary, mobileOnly, badge: () => n }
 export function tabs(defs, { onChange, initial, persistKey } = {}) {
   let current = initial || defs[0].id;
   try { if (persistKey && localStorage.getItem(persistKey)) current = localStorage.getItem(persistKey); } catch {}
-  if (!defs.find((d) => d.id === current)) current = defs[0].id;
+  const visible = () => defs.filter((d) => isMobile() || !d.mobileOnly);
+  const fix = () => { if (!visible().find((d) => d.id === current)) current = visible()[0].id; };
+  fix();
   const bar = h("nav", { class: "tabs" });
   const body = h("div", { class: "tab-body" });
-  const render = () => {
+  const badgeOf = (d) => (typeof d.badge === "function" ? d.badge() : d.badge);
+  const drawBar = () => {
     clear(bar);
-    for (const d of defs) {
-      bar.append(h("button", { class: d.id === current ? "active" : "", onclick: () => select(d.id) }, d.label, d.badge ? h("span", { class: "badge" }, d.badge) : null));
+    bar.classList.toggle("bottom-nav", isMobile());
+    if (!isMobile()) {
+      for (const d of visible()) bar.append(h("button", { class: d.id === current ? "active" : "", onclick: () => select(d.id) }, d.label, badgeOf(d) ? h("span", { class: "badge" }, badgeOf(d)) : null));
+      return;
     }
+    const prim = visible().filter((d) => d.primary);
+    const rest = visible().filter((d) => !d.primary);
+    const navBtn = (d) => h("button", { class: d.id === current ? "active" : "", onclick: () => select(d.id) },
+      h("span", { class: "nav-icon" }, d.icon || "•", badgeOf(d) ? h("span", { class: "badge" }, badgeOf(d)) : null), h("span", { class: "nav-label" }, d.short || d.label));
+    for (const d of prim) bar.append(navBtn(d));
+    if (rest.length) {
+      const inRest = rest.find((d) => d.id === current);
+      const restBadge = rest.reduce((n, d) => n + (+badgeOf(d) || 0), 0);
+      bar.append(h("button", { class: inRest ? "active" : "", onclick: () => actionSheet("More", rest.map((d) => ({ icon: d.icon, label: d.label, active: d.id === current, badge: badgeOf(d), onClick: () => select(d.id) }))) },
+        h("span", { class: "nav-icon" }, inRest ? inRest.icon || "•" : "☰", restBadge ? h("span", { class: "badge" }, restBadge) : null),
+        h("span", { class: "nav-label" }, inRest ? inRest.short || inRest.label : "More")));
+    }
+  };
+  const render = () => {
+    fix();
+    drawBar();
     clear(body);
-    const def = defs.find((d) => d.id === current);
-    body.append(def.render());
+    body.append(defs.find((d) => d.id === current).render());
   };
   const select = (id) => {
     current = id;
     try { persistKey && localStorage.setItem(persistKey, id); } catch {}
     render();
+    window.scrollTo(0, 0);
     onChange && onChange(id);
   };
   render();
-  return { el: h("div", { class: "tabset" }, bar, body), select, refresh: render, get current() { return current; } };
+  onLayoutChange(render);
+  return { el: h("div", { class: "tabset" }, bar, body), select, refresh: render, updateBar: drawBar, get current() { return current; } };
 }
 
 export function field(label, input, hint) {

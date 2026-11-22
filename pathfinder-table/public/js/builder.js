@@ -349,8 +349,14 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
     clear(side);
     const comp = computeCharacter(c, data);
     const issues = validateCharacter(c, data);
+    // phone: compact bar that expands into the full summary
+    side.append(h("button", { class: "sum-bar", onclick: () => side.classList.toggle("open") },
+      h("strong", {}, c.name || "Unnamed"),
+      h("span", {}, `HP ${comp.maxHp} · AC ${comp.ac}`),
+      h("span", { class: issues.length ? "warn" : "ok" }, issues.length ? `${issues.length} to do` : "✓ ready"),
+      h("span", { class: "chev" }, "▴")));
     side.append(
-      h("h3", {}, c.name || "Unnamed"),
+      h("h3", { class: "sum-title" }, c.name || "Unnamed"),
       h("p", { class: "muted" }, [c.ancestry, c.class, c.level && `level ${c.level}`].filter(Boolean).join(" · ")),
       h("div", { class: "attr-grid" }, ATTRS.map((a) => h("div", { class: "attr" }, h("span", {}, a.toUpperCase()), h("strong", {}, signed(comp.mods[a]))))),
       h("table", { class: "mini" }, h("tbody", {},

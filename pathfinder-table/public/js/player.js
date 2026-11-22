@@ -1,8 +1,8 @@
-import { h, clear, tabs, toast, copyText, modal } from "./ui.js";
+import { h, clear, tabs, toast, copyText, modal, isMobile, onLayoutChange, actionSheet } from "./ui.js";
 import { act, connect, session, forgetSession } from "./api.js";
 import { coreData } from "./data.js";
 import { createMapView } from "./map.js";
-import { logPanel, initiativePanel } from "./table.js";
+import { createLogPanel, createInitiativePanel } from "./table.js";
 import { renderSheet } from "./sheet.js";
 import { mountBuilder, blankCharacter } from "./builder.js";
 import { renderHandout, printHandout } from "./handouts.js";
@@ -15,9 +15,17 @@ export function mountPlayer(app) {
   let seenHandouts = new Set(JSON.parse(localStorage.getItem(`pftable.seen.${session.code}`) || "[]"));
   const header = h("header", { class: "topbar" });
   const main = h("main", { class: "main" });
-  const sideIni = h("div", {});
-  const sideLog = h("div", { class: "grow" });
-  app.append(header, h("div", { class: "layout" }, main, h("aside", { class: "side" }, sideIni, sideLog)));
+  const side = h("aside", { class: "side" });
+  app.append(header, h("div", { class: "layout" }, main, side));
+  const iniPanel = createInitiativePanel({ isDM: false });
+  const logPanel = createLogPanel({ isDM: false });
+  const placePanels = () => { if (!isMobile()) side.append(iniPanel.el, logPanel.el); };
+  placePanels();
+  onLayoutChange(placePanels);
+  let seenLog = 0;
+  const unreadLog = () => (isMobile() && tabset?.current !== "play" && state ? Math.min(99, state.log.length - seenLog) : 0);
+  const keepScroll = (fn) => { const y = window.scrollY, m = main.scrollTop; fn(); main.scrollTop = m; window.scrollTo(0, y); };
+  let shownMapId = null;
 
   const myChar = () => {
     const s = state.slots[state.me.slot];
@@ -57,8 +65,9 @@ export function mountPlayer(app) {
   function mapTab() {
     if (!state.map) return h("div", { class: "empty" }, h("p", {}, "The GM hasn't shown a map yet."));
     mapView.setMap(state.map);
-    return h("div", {}, h("h3", {}, state.map.name), mapView.el,
-      h("p", { class: "hint" }, "Drag your own token with ✋ Move. You only see what the GM has revealed. 📏 Measure shows distance in feet (every second diagonal costs 10 ft)."));
+    shownMapId = state.map.id;
+    return h("div", {}, h("h3", { class: "map-title" }, state.map.name), mapView.el,
+      h("p", { class: "hint" }, "Drag your token, or tap it and then tap where it should go. Drag empty space to pan; pinch or use − / + to zoom. You only see what the GM has revealed. 📏 Measure shows distance in feet (every second diagonal costs 10 ft)."));
   }
 
   function handoutsTab() {
@@ -101,13 +110,20 @@ export function mountPlayer(app) {
   const unseen = () => state ? state.handouts.filter((x) => !seenHandouts.has(x.id)).length : 0;
   let tabset;
   const makeTabs = () => tabs([
-    { id: "character", label: "Character", render: characterTab },
-    { id: "map", label: "Map", render: mapTab },
-    { id: "handouts", label: "Handouts", render: handoutsTab },
-    { id: "party", label: "Party", render: partyTab },
-    { id: "notes", label: "Journal", render: notesTab },
-    { id: "rules", label: "Rules", render: () => referencePanel({ isDM: false }) },
-  ], { persistKey: `pftable.ptab.${session.code}`, onChange: () => drawHeader() });
+    { id: "character", label: "Character", icon: "🧙", short: "Hero", primary: true, render: characterTab },
+    { id: "map", label: "Map", icon: "🗺️", primary: true, render: mapTab },
+    { id: "play", label: "Initiative & chat", icon: "💬", short: "Play", primary: true, mobileOnly: true, badge: unreadLog, render: playTab },
+    { id: "handouts", label: "Handouts", icon: "📜", primary: true, badge: () => unseen(), render: handoutsTab },
+    { id: "party", label: "Party", icon: "👥", render: partyTab },
+    { id: "notes", label: "Journal", icon: "📓", render: notesTab },
+    { id: "rules", label: "Rules", icon: "📚", render: () => referencePanel({ isDM: false }) },
+  ], { persistKey: `pftable.ptab.${session.code}`, onChange: (id) => { if (id === "play") { seenLog = state.log.length; logPanel.scrollDown(); } drawHeader(); tabset.updateBar(); } });
+
+  function playTab() {
+    seenLog = state.log.length;
+    logPanel.scrollDown();
+    return h("div", { class: "play-tab" }, iniPanel.el, logPanel.el);
+  }
 
   let first = true;
   connect((s) => {
@@ -115,14 +131,17 @@ export function mountPlayer(app) {
     state = s;
     mapView.setSlot(s.me.slot);
     drawHeader();
-    clear(sideIni).append(initiativePanel(state, { isDM: false }));
-    clear(sideLog).append(logPanel(state, { isDM: false }));
-    if (first) { tabset = makeTabs(); main.append(tabset.el); first = false; return; }
+    iniPanel.update(state);
+    logPanel.update(state);
+    if (first) { seenLog = state.log.length; tabset = makeTabs(); main.append(tabset.el); first = false; return; }
     if (state.handouts.length > prevHandouts && tabset.current !== "handouts") toast("📜 You received a handout!");
     const cur = tabset.current;
+    if (cur === "play") seenLog = state.log.length;
+    tabset.updateBar();
+    if (cur === "play" || cur === "rules") return;
     if (cur === "character" && building) return;
-    if (cur === "rules") return;
-    const y = main.scrollTop; tabset.refresh(); main.scrollTop = y;
+    if (cur === "map" && state.map && state.map.id === shownMapId) { mapView.setMap(state.map); return; }
+    keepScroll(() => tabset.refresh());
   }, () => {
     forgetSession(session.code);
     clear(app).append(h("div", { class: "landing" }, h("section", { class: "card" }, h("h2", {}, "You've left this game"), h("p", {}, "The GM freed your seat."), h("a", { href: "#/" }, "Back to start"))));
@@ -132,12 +151,17 @@ export function mountPlayer(app) {
     if (!state) return;
     const c = myChar();
     const n = unseen();
+    const personal = `${location.origin}/#/play/${state.code}?token=${session.token}`;
     clear(header).append(
       h("a", { href: "#/", class: "brand" }, "Pathfinder Table"),
       h("span", { class: "title" }, state.name),
       h("span", { class: "tag" }, `Seat ${state.me.slot + 1}${c ? " · " + c.name : ""}`),
-      n ? h("button", { class: "small primary", onclick: () => tabset.select("handouts") }, `📜 ${n} new`) : null,
+      n && !isMobile() ? h("button", { class: "small primary", onclick: () => tabset.select("handouts") }, `📜 ${n} new`) : null,
       h("span", { class: "spacer" }),
-      h("button", { class: "small", title: "Open your seat on another device", onclick: () => copyText(`${location.origin}/#/play/${state.code}?token=${session.token}`) }, "Copy my personal link"));
+      h("span", { class: "top-actions" }, h("button", { class: "small", title: "Open your seat on another device", onclick: () => copyText(personal) }, "Copy my personal link")),
+      h("button", { class: "icon-btn menu-btn", title: "Menu", onclick: () => actionSheet(state.name, [
+        { icon: "🔗", label: "Copy my personal link (to open this seat on another device)", onClick: () => copyText(personal) },
+        { icon: "🏠", label: "Back to start", href: "#/" },
+      ]) }, "⋯"));
   }
 }

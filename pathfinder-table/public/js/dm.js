@@ -1,9 +1,9 @@
-import { h, clear, cap, tabs, toast, modal, field, select, copyText, debounce } from "./ui.js";
+import { h, clear, cap, tabs, toast, modal, field, select, copyText, debounce, isMobile, onLayoutChange, actionSheet } from "./ui.js";
 import { act, connect, session, askAI, api, exportUrl } from "./api.js";
 import { coreData, load } from "./data.js";
 import { createMapView, generateMap, MAP_TYPES, visibleFrom, TERRAIN } from "./map.js";
 import { plotEditor } from "./plot.js";
-import { logPanel, initiativePanel } from "./table.js";
+import { createLogPanel, createInitiativePanel } from "./table.js";
 import { renderSheet } from "./sheet.js";
 import { mountBuilder } from "./builder.js";
 import { autoBuild, suggestTurn } from "./companions.js";
@@ -20,10 +20,17 @@ export async function mountDM(app) {
 
   const header = h("header", { class: "topbar" });
   const main = h("main", { class: "main" });
-  const sideIni = h("div", {});
-  const sideLog = h("div", { class: "grow" });
-  const side = h("aside", { class: "side" }, sideIni, sideLog);
+  const side = h("aside", { class: "side" });
   app.append(header, h("div", { class: "layout" }, main, side));
+  // Initiative + chat live in the sidebar on desktop and in the "Play" tab on phones.
+  const iniPanel = createInitiativePanel({ isDM: true, onCompanionTurn: (c) => companionTurn(c), onShowCreature: (n) => showCreature(n) });
+  const logPanel = createLogPanel({ isDM: true });
+  const placePanels = () => { if (!isMobile()) side.append(iniPanel.el, logPanel.el); };
+  placePanels();
+  onLayoutChange(placePanels);
+  let seenLog = 0;
+  const unreadLog = () => (isMobile() && tabset?.current !== "play" && state ? Math.min(99, state.log.length - seenLog) : 0);
+  const keepScroll = (fn) => { const y = window.scrollY, m = main.scrollTop; fn(); main.scrollTop = m; window.scrollTo(0, y); };
 
   // ---------------- persistent map view ----------------
   const savePaint = debounce((m) => act("saveMap", { map: m }).catch((e) => toast(e.message, "error")), 600);
@@ -61,8 +68,8 @@ export async function mountDM(app) {
     const m = activeMap();
     const wrap = h("div", { class: "table-tab" });
     const mapSel = select([{ value: "", label: state.maps.length ? "— choose map —" : "No maps yet" }, ...state.maps.map((x) => ({ value: x.id, label: x.name }))], state.activeMapId || "", (v) => act("setActiveMap", { id: v || null }));
-    wrap.append(h("div", { class: "row wrap" },
-      h("strong", {}, "Shown to players: "), mapSel,
+    wrap.append(h("div", { class: "row wrap scroll-row" },
+      h("strong", { class: "hide-mobile" }, "Shown to players: "), mapSel,
       h("button", { class: "small", onclick: () => tabset.select("maps") }, "+ New map"),
       m ? [
         h("button", { class: "small", onclick: addPartyTokens }, "Place party tokens"),
@@ -77,15 +84,23 @@ export async function mountDM(app) {
     }
     mapView.setMap(m);
     wrap.append(mapView.el);
-    // token list
-    wrap.append(h("details", { class: "tokens-list" }, h("summary", {}, `Tokens (${m.tokens.length})`),
-      h("ul", { class: "plain" }, m.tokens.map((t) => h("li", { class: "row" },
+    tokenBox = h("div", {});
+    drawTokenList(m);
+    wrap.append(tokenBox);
+    wrap.append(h("p", { class: "hint" }, "Tips: use ✋ Move to drag tokens, or tap a token then tap where it should go (distance shown in feet, PF2e diagonals). Drag empty space to pan; pinch or use − / + to zoom. ☀ Reveal / ☾ Hide paint fog; ▣ Reveal room opens a whole room at once. Players only receive revealed squares. Gold labels are GM-only."));
+    return wrap;
+  }
+
+  let tokenBox = null;
+  let tokensOpen = false;
+  function drawTokenList(m) {
+    if (!tokenBox) return;
+    clear(tokenBox).append(h("details", { class: "tokens-list", open: tokensOpen || null, ontoggle: (e) => (tokensOpen = e.target.open) }, h("summary", {}, `Tokens (${m.tokens.length})`),
+      h("ul", { class: "plain" }, m.tokens.map((t) => h("li", { class: "row wrap" },
         h("span", { class: "token-dot small", style: { background: t.color } }, t.label.slice(0, 2)),
         `${t.label} · ${t.kind} at ${t.x},${t.y}`, t.hidden ? h("span", { class: "tag" }, "hidden") : null,
         h("button", { class: "small", onclick: () => act("token", { op: "toggleHidden", id: t.id }) }, t.hidden ? "Reveal" : "Hide"),
         h("button", { class: "small", onclick: () => act("token", { op: "remove", id: t.id }) }, "Remove"))))));
-    wrap.append(h("p", { class: "hint" }, "Tips: use ✋ Move to drag tokens (distance shown in feet, PF2e diagonals). ☀ Reveal / ☾ Hide paint fog; ▣ Reveal room opens a whole room at once. Players only receive revealed squares. Gold labels are GM-only."));
-    return wrap;
   }
 
   async function addPartyTokens() {
@@ -380,48 +395,69 @@ export async function mountDM(app) {
   const LIVE = new Set(["table", "notes", "party", "handouts", "maps"]);
   let tabset;
   const makeTabs = () => tabs([
-    { id: "table", label: "Table", render: tableTab },
-    { id: "plot", label: "Plot", render: () => plotEditor(state, { onSceneBrief: openBrief, onMapFor: mapForLocation, onReload: () => setTimeout(() => tabset.refresh(), 400) }) },
-    { id: "notes", label: "Notes", render: notesTab },
-    { id: "party", label: "Seats & party", render: partyTab },
-    { id: "maps", label: "Maps", render: mapsTab },
-    { id: "handouts", label: "Handouts", render: handoutsTab },
-    { id: "encounters", label: "Encounters", render: () => encounterBuilder(state, { getActiveMap: activeMap }) },
-    { id: "tools", label: "GM tools", render: toolsTab },
-    { id: "reference", label: "Rules", render: () => referencePanel({ isDM: true }) },
-    { id: "assistant", label: aiOn ? "✨ Assistant" : "Assistant", render: assistantTab },
-  ], { persistKey: `pftable.dmtab.${session.code}` });
+    { id: "table", label: "Table", icon: "🗺️", short: "Map", primary: true, render: tableTab },
+    { id: "play", label: "Initiative & chat", icon: "💬", short: "Play", primary: true, mobileOnly: true, badge: unreadLog, render: playTab },
+    { id: "party", label: "Seats & party", icon: "👥", short: "Party", primary: true, render: partyTab },
+    { id: "notes", label: "Notes", icon: "📝", primary: true, render: notesTab },
+    { id: "plot", label: "Plot", icon: "📖", render: () => plotEditor(state, { onSceneBrief: openBrief, onMapFor: mapForLocation, onReload: () => setTimeout(() => tabset.refresh(), 400) }) },
+    { id: "maps", label: "Maps", icon: "🧭", render: mapsTab },
+    { id: "handouts", label: "Handouts", icon: "📜", render: handoutsTab },
+    { id: "encounters", label: "Encounters", icon: "⚔️", short: "Fights", render: () => encounterBuilder(state, { getActiveMap: activeMap }) },
+    { id: "tools", label: "GM tools", icon: "🧰", render: toolsTab },
+    { id: "reference", label: "Rules", icon: "📚", render: () => referencePanel({ isDM: true }) },
+    { id: "assistant", label: "Assistant", icon: "✨", short: "AI", render: assistantTab },
+  ], { persistKey: `pftable.dmtab.${session.code}`, onChange: (id) => { if (id === "play") { seenLog = state.log.length; logPanel.scrollDown(); tabset.updateBar(); } } });
+
+  function playTab() {
+    seenLog = state.log.length;
+    logPanel.scrollDown();
+    return h("div", { class: "play-tab" }, iniPanel.el, logPanel.el);
+  }
 
   let firstState = true;
   let mapsSig = "";
   connect((s) => {
     state = s;
     drawHeader();
-    clear(sideIni).append(initiativePanel(state, { isDM: true, onCompanionTurn: companionTurn, onShowCreature: showCreature }));
-    clear(sideLog).append(logPanel(state, { isDM: true }));
-    if (firstState) { tabset = makeTabs(); main.append(tabset.el); firstState = false; mapsSig = state.maps.map((m) => m.id + m.name).join() + state.activeMapId; return; }
+    iniPanel.update(state);
+    logPanel.update(state);
+    if (firstState) { seenLog = state.log.length; tabset = makeTabs(); main.append(tabset.el); firstState = false; mapsSig = state.maps.map((m) => m.id + m.name).join() + state.activeMapId; return; }
     const cur = tabset.current;
+    if (cur === "play") seenLog = state.log.length;
+    tabset.updateBar();
     // The maps tab holds an unsaved preview; only redraw it when the saved list changes.
     const sig = state.maps.map((m) => m.id + m.name).join() + state.activeMapId;
-    if (cur === "maps" && sig === mapsSig) return;
+    const mapsChanged = sig !== mapsSig;
     mapsSig = sig;
-    if (cur === "table" && activeMap() && mapView.map?.id === state.activeMapId) {
+    if (cur === "maps" && !mapsChanged) return;
+    if (cur === "table" && !mapsChanged && activeMap()) {
+      // same map: update in place so panning/zoom and the scroll position survive
       mapView.setMap(activeMap());
-      const y = main.scrollTop; tabset.refresh(); main.scrollTop = y;
+      drawTokenList(activeMap());
       return;
     }
-    if (LIVE.has(cur)) { const y = main.scrollTop; tabset.refresh(); main.scrollTop = y; }
+    if (LIVE.has(cur)) keepScroll(() => tabset.refresh());
   }, () => { toast("This GM link is no longer valid.", "error"); });
 
   function drawHeader() {
+    const invite = `${location.origin}/#/join/${state.code}`;
+    const gmLink = `${location.origin}/#/gm/${state.code}?key=${session.key}`;
+    const menu = [
+      { icon: "🔗", label: "Copy invite link", onClick: () => copyText(invite) },
+      { icon: "🔑", label: "Copy my GM link (keep private)", onClick: () => copyText(gmLink) },
+      { icon: "💾", label: "Export game", href: exportUrl(), download: `${state.code}.json` },
+      { icon: "🏠", label: "Back to start", href: "#/" },
+    ];
     clear(header).append(
       h("a", { href: "#/", class: "brand" }, "Pathfinder Table"),
-      h("span", { class: "title" }, state.name, state.plot.title ? ` — ${state.plot.title}` : ""),
+      h("span", { class: "title" }, state.name, state.plot.title ? h("span", { class: "hide-mobile" }, ` — ${state.plot.title}`) : null),
       h("span", { class: "tag" }, "GM"),
       h("span", { class: "spacer" }),
-      h("span", {}, "Join code ", h("strong", { class: "code" }, state.code)),
-      h("button", { class: "small", onclick: () => copyText(`${location.origin}/#/join/${state.code}`) }, "Copy invite"),
-      h("button", { class: "small", title: "Your private GM link. Anyone with it can run this game.", onclick: () => copyText(`${location.origin}/#/gm/${state.code}?key=${session.key}`) }, "Copy GM link"),
-      h("a", { class: "button small", href: exportUrl(), download: `${state.code}.json` }, "Export"));
+      h("button", { class: "small code-btn", title: "Copy invite link", onclick: () => copyText(invite) }, h("span", { class: "hide-mobile" }, "Join code "), h("strong", { class: "code" }, state.code)),
+      h("span", { class: "top-actions" },
+        h("button", { class: "small", onclick: () => copyText(invite) }, "Copy invite"),
+        h("button", { class: "small", title: "Your private GM link. Anyone with it can run this game.", onclick: () => copyText(gmLink) }, "Copy GM link"),
+        h("a", { class: "button small", href: exportUrl(), download: `${state.code}.json` }, "Export")),
+      h("button", { class: "icon-btn menu-btn", title: "Menu", onclick: () => actionSheet(state.name, menu) }, "⋯"));
   }
 }
