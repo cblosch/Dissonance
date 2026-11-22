@@ -663,13 +663,13 @@ export function createMapView({ isDM, mySlot = null, onTokenMove, onFog, onPaint
     get map() { return map; },
     setSlot(v) { mySlot = v; },
     redraw: draw,
-    snapshot(x0, y0, w, hh, scale = 20) {
+    snapshot(x0, y0, w, hh, scale = 16) {
       // render part of the current map to a data URL (for map-fragment handouts)
       const old = cs; cs = scale; suppressFog = true; draw();
       const c2 = document.createElement("canvas"); c2.width = w * cs; c2.height = hh * cs;
       c2.getContext("2d").drawImage(canvas, x0 * cs, y0 * cs, w * cs, hh * cs, 0, 0, w * cs, hh * cs);
       cs = old; suppressFog = false; draw();
-      return c2.toDataURL("image/png");
+      return c2.toDataURL("image/jpeg", 0.8);
     },
   };
 }

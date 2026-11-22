@@ -1,5 +1,5 @@
-import { h, clear, toast, select, signed } from "./ui.js";
-import { act } from "./api.js";
+import { h, clear, toast, select, signed, confirmDialog, promptDialog } from "./ui.js";
+import { act } from "./transport.js";
 import { coreData } from "./data.js";
 import { computeCharacter } from "./shared/rules.js";
 
@@ -88,7 +88,7 @@ export function initiativePanel(state, { isDM, onCompanionTurn, onShowCreature }
       !ini.active ? h("button", { class: "small primary", onclick: () => act("initiative", { op: "start" }) }, "Start") : null,
       ini.active ? h("button", { class: "small", onclick: () => act("initiative", { op: "prev" }) }, "◀") : null,
       ini.active ? h("button", { class: "small primary", onclick: () => act("initiative", { op: "next" }) }, "Next ▶") : null,
-      ini.entries.length ? h("button", { class: "small", onclick: () => confirm("End the encounter and clear initiative?") && act("initiative", { op: "end" }) }, "End") : null));
+      ini.entries.length ? h("button", { class: "small", onclick: async () => (await confirmDialog("End the encounter and clear initiative?", { ok: "End encounter" })) && act("initiative", { op: "end" }) }, "End") : null));
   }
   // player: roll my initiative
   if (!isDM) {
@@ -121,7 +121,7 @@ export function initiativePanel(state, { isDM, onCompanionTurn, onShowCreature }
       isDM ? h("span", { class: "ini-ctl" },
         e.maxHp ? h("input", { type: "number", placeholder: "dmg", title: "Damage (positive) or healing (negative)", class: "num-input", onchange: (ev) => { act("initiative", { op: "update", id: e.id, patch: { hp: Math.max(0, Math.min(e.maxHp, e.hp - +ev.target.value)) } }); } }) : null,
         h("input", { type: "number", inputmode: "numeric", value: e.init, title: "Initiative", class: "num-input", onchange: (ev) => act("initiative", { op: "update", id: e.id, patch: { init: +ev.target.value } }) }),
-        h("button", { class: "icon", title: "Conditions", onclick: () => { const c = prompt("Conditions (comma separated)", (e.conditions || []).join(", ")); if (c !== null) act("initiative", { op: "update", id: e.id, patch: { conditions: c.split(",").map((x) => x.trim()).filter(Boolean) } }); } }, "⚑"),
+        h("button", { class: "icon", title: "Conditions", onclick: async () => { const c = await promptDialog(`Conditions on ${e.name}`, (e.conditions || []).join(", "), "Conditions (comma separated, e.g. frightened 1, off-guard)"); if (c !== null) act("initiative", { op: "update", id: e.id, patch: { conditions: c.split(",").map((x) => x.trim()).filter(Boolean) } }); } }, "⚑"),
         e.hidden ? h("button", { class: "icon", title: "Reveal", onclick: () => act("initiative", { op: "update", id: e.id, patch: { hidden: false } }) }, "👁") : null,
         isCompanion && onCompanionTurn ? h("button", { class: "icon", title: "Suggest companion turn", onclick: () => onCompanionTurn(pc) }, "🤖") : null,
         h("button", { class: "icon", title: "Remove", onclick: () => act("initiative", { op: "remove", id: e.id }) }, "✕")) : null));

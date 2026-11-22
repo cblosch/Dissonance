@@ -1,7 +1,7 @@
 import { h, clear, cap, signed, modal, richText, toast, select } from "./ui.js";
 import { load, coreData } from "./data.js";
 import { ATTRS, ATTR_NAMES, SKILLS, RANKS, AON, computeCharacter } from "./shared/rules.js";
-import { act } from "./api.js";
+import { act } from "./transport.js";
 import { actionText } from "./builder.js";
 
 const aon = (name) => h("a", { class: "aon", href: AON.search(name), target: "_blank", rel: "noopener" }, "AoN ↗");

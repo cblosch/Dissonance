@@ -3,7 +3,7 @@ const cache = {};
 
 export function load(name) {
   if (!cache[name]) {
-    cache[name] = fetch(`/data/${name}.json`).then((r) => {
+    cache[name] = fetch(`data/${name}.json`).then((r) => {
       if (!r.ok) throw new Error(`Missing data file ${name}.json`);
       return r.json();
     });

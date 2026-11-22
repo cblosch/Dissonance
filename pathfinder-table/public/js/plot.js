@@ -1,5 +1,5 @@
-import { h, clear, field, select, modal, toast, debounce } from "./ui.js";
-import { act } from "./api.js";
+import { h, clear, field, select, modal, toast, debounce, confirmDialog } from "./ui.js";
+import { act } from "./transport.js";
 import { MAP_TYPES } from "./map.js";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -90,7 +90,7 @@ export function plotEditor(state, { onSceneBrief, onMapFor, onReload }) {
       arr.forEach((item, i) => box.append(h("div", { class: "plot-item" }, renderItem(item, i),
         h("div", { class: "row end" },
           i > 0 ? h("button", { class: "icon", title: "Move up", onclick: () => { [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; draw(); save(); } }, "↑") : null,
-          h("button", { class: "icon", title: "Delete", onclick: () => { if (confirm("Delete this entry?")) { arr.splice(i, 1); draw(); save(); } } }, "🗑")))));
+          h("button", { class: "icon", title: "Delete", onclick: async () => { if (await confirmDialog("Delete this entry?", { ok: "Delete", danger: true })) { arr.splice(i, 1); draw(); save(); } } }, "🗑")))));
       box.append(h("button", { onclick: () => { arr.push(make()); draw(); save(); } }, addLabel));
     };
     draw();

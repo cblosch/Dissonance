@@ -1,4 +1,4 @@
-import { h, clear, cap, signed, field, select, modal, richText, toast } from "./ui.js";
+import { h, clear, cap, signed, field, select, modal, richText, toast, confirmDialog } from "./ui.js";
 import { load, coreData } from "./data.js";
 import {
   ATTRS, ATTR_NAMES, SKILLS, RANKS, AON, computeCharacter, validateCharacter, freeSkillCount,
@@ -60,9 +60,9 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
     toast("Random build created. Adjust anything you like.");
   }
 
-  function save() {
+  async function save() {
     const issues = validateCharacter(c, data);
-    if (issues.length && !confirm(`This character still has ${issues.length} open choice(s):\n\n• ${issues.slice(0, 8).join("\n• ")}\n\nSave anyway?`)) return;
+    if (issues.length && !(await confirmDialog(`This character still has ${issues.length} open choice${issues.length > 1 ? "s" : ""}:\n\n• ${issues.slice(0, 8).join("\n• ")}\n\nSave anyway? You can finish it later with Edit build.`, { ok: "Save anyway", cancel: "Keep editing" }))) return;
     onSave && onSave(structuredClone(c));
   }
 

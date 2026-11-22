@@ -28,6 +28,15 @@ ANTHROPIC_API_KEY=sk-ant-... npm start
 
 It uses `claude-opus-5-5` by default (`PF_TABLE_MODEL` overrides it). Players never see the assistant. Everything else works without it.
 
+## Hosted version (no server)
+
+`artifact/page.html` plus `public/` is published as a claude.ai artifact, so the app runs from a link with nothing to install. In that version:
+
+- Everyone signs in to claude.ai and opens the same link. Players need edit access to the artifact (Share menu) so their moves can be saved.
+- The GM's open page runs the game. It keeps the full game, including plot secrets and unrevealed maps, in the GM's private storage, and publishes each player's filtered view. Players' actions queue up and apply as soon as the GM's page is open.
+- The AI assistant uses the viewer's own Claude access, so no API key is needed. Exports go through a download prompt. Printing isn't available there.
+- `public/js/cloud.js` is this transport; `public/js/api.js` is the server one; `transport.js` picks between them.
+
 ## Phones and tablets
 
 The same app adapts to the screen. On phones (up to 760px wide):

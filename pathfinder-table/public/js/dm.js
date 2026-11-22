@@ -1,5 +1,5 @@
-import { h, clear, cap, tabs, toast, modal, field, select, copyText, debounce, isMobile, onLayoutChange, actionSheet } from "./ui.js";
-import { act, connect, session, askAI, api, exportUrl } from "./api.js";
+import { h, clear, cap, tabs, toast, modal, field, select, copyText, debounce, isMobile, onLayoutChange, actionSheet, confirmDialog, promptDialog, formDialog, MODE } from "./ui.js";
+import { act, connect, session, askAI, config, shareInfo, exportGame, canPrint, isArtifact } from "./transport.js";
 import { coreData, load } from "./data.js";
 import { createMapView, generateMap, MAP_TYPES, visibleFrom, TERRAIN } from "./map.js";
 import { plotEditor } from "./plot.js";
@@ -12,10 +12,10 @@ import { encounterBuilder, npcGenerator, lootGenerator, dcHelper, sceneBrief, cr
 import { referencePanel, statBlock } from "./reference.js";
 import { computeCharacter } from "./shared/rules.js";
 
-export async function mountDM(app) {
+export async function mountDM(app, { home } = {}) {
   let state = null;
   let aiOn = false;
-  try { aiOn = (await api("/api/config")).ai; } catch {}
+  try { aiOn = (await config()).ai; } catch {}
   const ai = aiOn ? (task, prompt) => askAI(task, prompt) : null;
 
   const header = h("header", { class: "topbar" });
@@ -40,12 +40,14 @@ export async function mountDM(app) {
     onFog: (cells, reveal) => act("fog", { mapId: state.activeMapId, cells, reveal }).catch((e) => toast(e.message, "error")),
     onPaint: (m) => savePaint(m),
     onTokenAdd: (x, y) => tokenDialog(x, y),
-    onLabelAdd: (x, y) => {
-      const text = prompt("Label text");
-      if (!text) return;
-      const pub = confirm("Should players see this label once the area is revealed? (Cancel = GM only)");
+    onLabelAdd: async (x, y) => {
+      const r = await formDialog("Add label", [
+        { name: "text", label: "Label text" },
+        { name: "pub", label: "Players can see it once the area is revealed", type: "checkbox", value: false },
+      ], { ok: "Add label" });
+      if (!r || !r.text) return;
       const m = mapView.map;
-      act("saveMap", { map: { ...m, labels: [...(m.labels || []), { x, y, text, public: pub }] } });
+      act("saveMap", { map: { ...m, labels: [...(m.labels || []), { x, y, text: r.text, public: r.pub }] } });
     },
   });
   const activeMap = () => state?.maps.find((m) => m.id === state.activeMapId) || null;
@@ -75,7 +77,7 @@ export async function mountDM(app) {
         h("button", { class: "small", onclick: addPartyTokens }, "Place party tokens"),
         h("button", { class: "small", onclick: revealAroundParty }, "Reveal around party"),
         h("button", { class: "small", onclick: () => act("fog", { mapId: m.id, all: true }) }, "Reveal all"),
-        h("button", { class: "small", onclick: () => confirm("Hide the whole map again?") && act("fog", { mapId: m.id, all: false }) }, "Hide all"),
+        h("button", { class: "small", onclick: async () => (await confirmDialog("Hide the whole map from players again?", { ok: "Hide all" })) && act("fog", { mapId: m.id, all: false }) }, "Hide all"),
         h("button", { class: "small", onclick: () => mapFragment(m) }, "Map-fragment handout"),
       ] : null));
     if (!m) {
@@ -130,11 +132,16 @@ export async function mountDM(app) {
     await act("fog", { mapId: m.id, cells: [...cells], reveal: true });
   }
 
-  function mapFragment(m) {
-    const x = +prompt("Top-left X of the area to copy", "0"), y = +prompt("Top-left Y", "0");
-    const w = +prompt("Width in squares", String(Math.min(16, m.w))), hh = +prompt("Height in squares", String(Math.min(12, m.h)));
-    if (!w || !hh) return;
-    const image = mapView.snapshot(Math.max(0, x), Math.max(0, y), Math.min(w, m.w - x), Math.min(hh, m.h - y), 18);
+  async function mapFragment(m) {
+    const r = await formDialog("Map fragment", [
+      { name: "x", label: "Left column (x)", type: "number", value: 0, hint: "Hover or tap the map to see square coordinates." },
+      { name: "y", label: "Top row (y)", type: "number", value: 0 },
+      { name: "w", label: "Width in squares", type: "number", value: Math.min(16, m.w) },
+      { name: "h", label: "Height in squares", type: "number", value: Math.min(12, m.h) },
+    ], { ok: "Make handout" });
+    if (!r || !r.w || !r.h) return;
+    const { x, y, w, h: hh } = r;
+    const image = mapView.snapshot(Math.max(0, x), Math.max(0, y), Math.min(w, m.w - x), Math.min(hh, m.h - y), 16);
     handoutDialog({ kind: "mapfrag", title: `Map of ${m.name}`, body: "", meta: { image } });
   }
 
@@ -166,14 +173,15 @@ export async function mountDM(app) {
       state.maps.length ? h("ul", { class: "plain" }, state.maps.map((m) => h("li", { class: "row" },
         h("strong", {}, m.name), h("small", { class: "muted" }, `${m.w}×${m.h} ${m.theme}`),
         m.id === state.activeMapId ? h("span", { class: "tag" }, "active") : h("button", { class: "small", onclick: () => act("setActiveMap", { id: m.id }) }, "Show to players"),
-        h("button", { class: "small", onclick: () => { const n = prompt("Rename map", m.name); if (n) act("saveMap", { map: { ...m, name: n } }); } }, "Rename"),
-        h("button", { class: "small", onclick: () => confirm(`Delete ${m.name}?`) && act("deleteMap", { id: m.id }) }, "Delete")))) : h("p", { class: "muted" }, "None yet.")));
+        h("button", { class: "small", onclick: async () => { const n = await promptDialog("Rename map", m.name, "Name"); if (n) act("saveMap", { map: { ...m, name: n } }); } }, "Rename"),
+        h("button", { class: "small", onclick: async () => (await confirmDialog(`Delete the map “${m.name}”?`, { ok: "Delete", danger: true })) && act("deleteMap", { id: m.id }) }, "Delete")))) : h("p", { class: "muted" }, "None yet.")));
     return box;
   }
 
-  function mapForLocation(loc) {
+  async function mapForLocation(loc) {
     const m = generateMap(loc.type || "dungeon", undefined, { name: loc.name });
-    act("saveMap", { map: m, activate: confirm(`Map for ${loc.name} created. Show it to players now? (fully fogged)`) }).then(() => { toast("Map saved"); tabset.select("table"); });
+    const show = await confirmDialog(`Map for ${loc.name} created. Show it to players now? It starts fully hidden.`, { ok: "Show to players", cancel: "Just save it" });
+    act("saveMap", { map: m, activate: show }).then(() => { toast("Map saved"); tabset.select("table"); });
   }
 
   function notesTab() {
@@ -196,7 +204,7 @@ export async function mountDM(app) {
             h("span", { class: "row" },
               h("button", { class: "small", onclick: () => act("updateNote", { id: n.id, public: !n.public }) }, n.public ? "Unshare" : "Share with players"),
               h("button", { class: "small", onclick: () => handoutDialog({ kind: "clue", title: "Note", body: n.text }) }, "→ handout"),
-              h("button", { class: "icon", onclick: () => confirm("Delete note?") && act("deleteNote", { id: n.id }) }, "🗑"))),
+              h("button", { class: "icon", onclick: async () => (await confirmDialog("Delete this note?", { ok: "Delete", danger: true })) && act("deleteNote", { id: n.id }) }, "🗑"))),
           h("p", { class: "pre" }, n.text)));
       }
     };
@@ -211,11 +219,16 @@ export async function mountDM(app) {
 
   function partyTab() {
     const box = h("div", { class: "party" });
-    const joinUrl = `${location.origin}/#/join/${state.code}`;
+    const share = shareInfo(state);
     box.append(h("section", { class: "bsec" },
       h("h3", {}, "Invite players"),
-      h("p", {}, "Players open this link (or go to the home page and enter code ", h("strong", { class: "code" }, state.code), "):"),
-      h("div", { class: "row" }, h("input", { value: joinUrl, readonly: true, style: { flex: 1 } }), h("button", { onclick: () => copyText(joinUrl) }, "Copy"))));
+      isArtifact
+        ? h("div", {},
+          h("p", {}, "Join code ", h("strong", { class: "code big-code" }, state.code)),
+          h("p", { class: "hint" }, "Share this page with each player from the artifact's Share menu (they need a claude.ai account and permission to edit, so their moves can be saved). They open it, tap “I'm a player” and enter the code. Keep this GM screen open while you play: it's what applies their moves."),
+          h("button", { onclick: () => copyText(share.invite) }, "Copy invite message"))
+        : [h("p", {}, "Players open this link (or go to the home page and enter code ", h("strong", { class: "code" }, state.code), "):"),
+          h("div", { class: "row" }, h("input", { value: share.invite, readonly: true, style: { flex: 1 } }), h("button", { onclick: () => copyText(share.invite) }, "Copy"))]));
     const grid = h("div", { class: "seat-grid" });
     for (const s of state.slots) {
       const c = s.characterId ? state.characters[s.characterId] : null;
@@ -233,7 +246,7 @@ export async function mountDM(app) {
         h("button", { class: "small", onclick: () => companionTurn(c) }, "Suggest turn"));
       if (s.type === "player" && c) actions.append(h("button", { class: "small", onclick: () => editBuild(s, c) }, "Edit build"));
       if (s.type === "open") actions.append(h("button", { class: "small primary", onclick: () => fillDialog(s) }, "Fill with AI companion"));
-      else actions.append(h("button", { class: "small", onclick: () => confirm(`Free seat ${s.index + 1}? Their character will be removed.`) && act("kick", { slot: s.index }) }, s.type === "companion" ? "Remove" : "Kick"));
+      else actions.append(h("button", { class: "small", onclick: async () => (await confirmDialog(`Free seat ${s.index + 1}? Their character will be removed.`, { ok: s.type === "companion" ? "Remove" : "Kick", danger: true })) && act("kick", { slot: s.index }) }, s.type === "companion" ? "Remove" : "Kick"));
       card.append(actions);
       grid.append(card);
     }
@@ -319,8 +332,8 @@ export async function mountDM(app) {
         h("div", { class: "mini-preview" }, renderHandout(ho)),
         h("div", { class: "row" },
           h("button", { class: "small", onclick: () => handoutDialog(ho) }, "Edit / give"),
-          h("button", { class: "small", onclick: () => printHandout(ho) }, "Print"),
-          h("button", { class: "small", onclick: () => confirm("Delete handout?") && act("handout", { op: "delete", id: ho.id }) }, "Delete"))));
+          canPrint ? h("button", { class: "small", onclick: () => printHandout(ho) }, "Print") : null,
+          h("button", { class: "small", onclick: async () => (await confirmDialog("Delete this handout?", { ok: "Delete", danger: true })) && act("handout", { op: "delete", id: ho.id }) }, "Delete"))));
     }
     if (!state.handouts.length) list.append(h("p", { class: "muted" }, "No handouts yet. Try “Suggest from plot”."));
     box.append(list);
@@ -440,24 +453,24 @@ export async function mountDM(app) {
   }, () => { toast("This GM link is no longer valid.", "error"); });
 
   function drawHeader() {
-    const invite = `${location.origin}/#/join/${state.code}`;
-    const gmLink = `${location.origin}/#/gm/${state.code}?key=${session.key}`;
+    const share = shareInfo(state);
+    const doExport = () => exportGame(state).catch((e) => toast(e.message, "error"));
     const menu = [
-      { icon: "🔗", label: "Copy invite link", onClick: () => copyText(invite) },
-      { icon: "🔑", label: "Copy my GM link (keep private)", onClick: () => copyText(gmLink) },
-      { icon: "💾", label: "Export game", href: exportUrl(), download: `${state.code}.json` },
-      { icon: "🏠", label: "Back to start", href: "#/" },
+      { icon: "🔗", label: share.inviteLabel, onClick: () => copyText(share.invite) },
+      share.private ? { icon: "🔑", label: share.privateLabel, onClick: () => copyText(share.private) } : null,
+      { icon: "💾", label: "Export game (JSON)", onClick: doExport },
+      { icon: "🏠", label: "Back to start", onClick: () => home && home() },
     ];
     clear(header).append(
-      h("a", { href: "#/", class: "brand" }, "Pathfinder Table"),
+      h("button", { class: "brand link", onclick: () => home && home() }, "Pathfinder Table"),
       h("span", { class: "title" }, state.name, state.plot.title ? h("span", { class: "hide-mobile" }, ` — ${state.plot.title}`) : null),
       h("span", { class: "tag" }, "GM"),
       h("span", { class: "spacer" }),
-      h("button", { class: "small code-btn", title: "Copy invite link", onclick: () => copyText(invite) }, h("span", { class: "hide-mobile" }, "Join code "), h("strong", { class: "code" }, state.code)),
+      h("button", { class: "small code-btn", title: share.inviteLabel, onclick: () => copyText(share.invite) }, h("span", { class: "hide-mobile" }, "Join code "), h("strong", { class: "code" }, state.code)),
       h("span", { class: "top-actions" },
-        h("button", { class: "small", onclick: () => copyText(invite) }, "Copy invite"),
-        h("button", { class: "small", title: "Your private GM link. Anyone with it can run this game.", onclick: () => copyText(gmLink) }, "Copy GM link"),
-        h("a", { class: "button small", href: exportUrl(), download: `${state.code}.json` }, "Export")),
+        h("button", { class: "small", onclick: () => copyText(share.invite) }, share.inviteLabel.replace(/^Copy /, "Copy ")),
+        share.private ? h("button", { class: "small", title: "Anyone with this link can run this game.", onclick: () => copyText(share.private) }, "Copy GM link") : null,
+        h("button", { class: "small", onclick: doExport }, "Export")),
       h("button", { class: "icon-btn menu-btn", title: "Menu", onclick: () => actionSheet(state.name, menu) }, "⋯"));
   }
 }

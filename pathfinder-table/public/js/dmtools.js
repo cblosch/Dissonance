@@ -1,6 +1,6 @@
 import { h, clear, cap, signed, field, select, modal, toast, debounce } from "./ui.js";
 import { load } from "./data.js";
-import { act } from "./api.js";
+import { act } from "./transport.js";
 import { creatureXP, budgetFor, threatFor, dcForLevel, DC_ADJUST, SIMPLE_DC, TREASURE_BY_LEVEL, RARITY_ADJUST, AON } from "./shared/rules.js";
 import { statBlock } from "./reference.js";
 import { creatureLoreHandout, itemHandout, editHandout } from "./handouts.js";

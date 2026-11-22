@@ -1,5 +1,5 @@
 import { h, clear, tabs, toast, copyText, modal, isMobile, onLayoutChange, actionSheet } from "./ui.js";
-import { act, connect, session, forgetSession } from "./api.js";
+import { act, connect, session, shareInfo, canPrint, isArtifact, onWaitingForGM } from "./transport.js";
 import { coreData } from "./data.js";
 import { createMapView } from "./map.js";
 import { createLogPanel, createInitiativePanel } from "./table.js";
@@ -9,7 +9,7 @@ import { renderHandout, printHandout } from "./handouts.js";
 import { referencePanel } from "./reference.js";
 import { computeCharacter } from "./shared/rules.js";
 
-export function mountPlayer(app) {
+export function mountPlayer(app, { home } = {}) {
   let state = null;
   let building = false; // while the builder is open, don't re-render the character tab
   let seenHandouts = new Set(JSON.parse(localStorage.getItem(`pftable.seen.${session.code}`) || "[]"));
@@ -38,21 +38,34 @@ export function mountPlayer(app) {
     onTokenMove: (t, x, y) => act("token", { op: "move", id: t.id, x, y }).catch((e) => toast(e.message, "error")),
   });
 
+  let pendingSave = null; // { draft, prev } while the GM's game applies a save
   function characterTab() {
     const c = myChar();
     const box = h("div", {});
+    if (pendingSave && !building) {
+      if (c && c.updatedAt && c.updatedAt !== pendingSave.prev) { pendingSave = null; toast("Character saved"); }
+      else {
+        const draft = pendingSave.draft;
+        box.append(h("div", { class: "empty" }, h("h3", {}, "Saving your character…"),
+          h("p", {}, "It appears here as soon as the GM's game has it. If the GM's screen isn't open, it's saved when they open it."),
+          h("button", { onclick: () => { pendingSave = null; building = true; draftChar = draft; tabset.refresh(); } }, "Keep editing")));
+        return box;
+      }
+    }
     if (!c || building) {
       building = true;
       if (!c) box.append(h("p", { class: "hint" }, `Build your character for level ${state.plot.partyLevel || 1} (the GM's party level). Everything is checked against Player Core / Player Core 2 rules; each choice links to Archives of Nethys.`));
-      mountBuilder(box, c || blankCharacter(+state.plot.partyLevel || 1), {
+      const start = draftChar || c || blankCharacter(+state.plot.partyLevel || 1);
+      draftChar = null;
+      mountBuilder(box, start, {
         title: c ? `Edit ${c.name}` : "Create your character",
         onSave: async (char) => {
           try {
+            pendingSave = { draft: char, prev: c?.updatedAt || null };
             await act("saveCharacter", { character: { ...char, live: c?.live } });
             building = false;
-            toast("Character saved");
-            setTimeout(() => tabset.refresh(), 200);
-          } catch (e) { toast(e.message, "error"); }
+            setTimeout(() => tabset.refresh(), 50);
+          } catch (e) { pendingSave = null; toast(e.message, "error"); }
         },
         onCancel: c ? () => { building = false; tabset.refresh(); } : null,
       });
@@ -61,6 +74,7 @@ export function mountPlayer(app) {
     box.append(renderSheet(c, { editable: true, onEdit: () => { building = true; tabset.refresh(); } }));
     return box;
   }
+  let draftChar = null;
 
   function mapTab() {
     if (!state.map) return h("div", { class: "empty" }, h("p", {}, "The GM hasn't shown a map yet."));
@@ -75,7 +89,7 @@ export function mountPlayer(app) {
     if (!state.handouts.length) box.append(h("p", { class: "muted" }, "No handouts yet."));
     for (const ho of state.handouts.slice().reverse()) {
       seenHandouts.add(ho.id);
-      box.append(h("div", { class: "handout-card" }, renderHandout(ho), h("button", { class: "small", onclick: () => printHandout(ho) }, "Print")));
+      box.append(h("div", { class: "handout-card" }, renderHandout(ho), canPrint ? h("button", { class: "small", onclick: () => printHandout(ho) }, "Print") : null));
     }
     try { localStorage.setItem(`pftable.seen.${session.code}`, JSON.stringify([...seenHandouts])); } catch {}
     return box;
@@ -126,7 +140,12 @@ export function mountPlayer(app) {
   }
 
   let first = true;
+  const waitBox = h("div", { class: "empty" }, h("h3", {}, "Waiting for the GM"),
+    h("p", {}, "Your request to join has been sent. You'll get your seat as soon as the GM has the game open."),
+    h("button", { onclick: () => home && home() }, "Back to start"));
+  onWaitingForGM(() => { if (first) clear(main).append(waitBox); });
   connect((s) => {
+    if (first) clear(main);
     const prevHandouts = state?.handouts.length || 0;
     state = s;
     mapView.setSlot(s.me.slot);
@@ -143,25 +162,24 @@ export function mountPlayer(app) {
     if (cur === "map" && state.map && state.map.id === shownMapId) { mapView.setMap(state.map); return; }
     keepScroll(() => tabset.refresh());
   }, () => {
-    forgetSession(session.code);
-    clear(app).append(h("div", { class: "landing" }, h("section", { class: "card" }, h("h2", {}, "You've left this game"), h("p", {}, "The GM freed your seat."), h("a", { href: "#/" }, "Back to start"))));
+    clear(app).append(h("div", { class: "landing" }, h("section", { class: "card" }, h("h2", {}, "You've left this game"), h("p", {}, "The GM freed your seat."), h("button", { onclick: () => home && home() }, "Back to start"))));
   });
 
   function drawHeader() {
     if (!state) return;
     const c = myChar();
     const n = unseen();
-    const personal = `${location.origin}/#/play/${state.code}?token=${session.token}`;
+    const share = shareInfo(state);
     clear(header).append(
-      h("a", { href: "#/", class: "brand" }, "Pathfinder Table"),
+      h("button", { class: "brand link", onclick: () => home && home() }, "Pathfinder Table"),
       h("span", { class: "title" }, state.name),
       h("span", { class: "tag" }, `Seat ${state.me.slot + 1}${c ? " · " + c.name : ""}`),
       n && !isMobile() ? h("button", { class: "small primary", onclick: () => tabset.select("handouts") }, `📜 ${n} new`) : null,
       h("span", { class: "spacer" }),
-      h("span", { class: "top-actions" }, h("button", { class: "small", title: "Open your seat on another device", onclick: () => copyText(personal) }, "Copy my personal link")),
+      share.private ? h("span", { class: "top-actions" }, h("button", { class: "small", title: "Open your seat on another device", onclick: () => copyText(share.private) }, "Copy my personal link")) : null,
       h("button", { class: "icon-btn menu-btn", title: "Menu", onclick: () => actionSheet(state.name, [
-        { icon: "🔗", label: "Copy my personal link (to open this seat on another device)", onClick: () => copyText(personal) },
-        { icon: "🏠", label: "Back to start", href: "#/" },
+        share.private ? { icon: "🔗", label: share.privateLabel, onClick: () => copyText(share.private) } : null,
+        { icon: "🏠", label: "Back to start", onClick: () => home && home() },
       ]) }, "⋯"));
   }
 }

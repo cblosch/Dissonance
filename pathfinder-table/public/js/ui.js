@@ -150,5 +150,63 @@ export function richText(html) {
 }
 
 export function copyText(text) {
-  navigator.clipboard?.writeText(text).then(() => toast("Copied to clipboard"), () => prompt("Copy this:", text));
+  const fallback = () => modal("Copy this", h("div", {}, h("p", { class: "hint" }, "Select the text and copy it."),
+    h("textarea", { rows: 3, readonly: true, value: text, onfocus: (e) => e.target.select() })));
+  try { navigator.clipboard.writeText(text).then(() => toast("Copied"), fallback); } catch { fallback(); }
+}
+
+// Where the app is running: "server" (Node server) or "artifact" (hosted page, no server)
+export const MODE = window.PF_MODE === "artifact" ? "artifact" : "server";
+
+// In-page replacements for confirm() and prompt(), which hosted pages can't use.
+export function confirmDialog(message, { ok = "OK", cancel = "Cancel", danger = false } = {}) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); m.close(); } };
+    const m = modal("Please confirm", h("div", { class: "dialog" },
+      h("p", { class: "pre" }, message),
+      h("div", { class: "row end" },
+        h("button", { onclick: () => finish(false) }, cancel),
+        h("button", { class: danger ? "primary danger" : "primary", onclick: () => finish(true) }, ok))), { onClose: () => finish(false) });
+  });
+}
+
+// fields: [{ name, label, value, type, options:[{value,label}], hint }]; resolves an object or null
+export function formDialog(title, fields, { ok = "OK" } = {}) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); m.close(); } };
+    const inputs = {};
+    const body = h("form", { class: "dialog", onsubmit: (e) => { e.preventDefault(); collect(); } });
+    for (const f of fields) {
+      let el;
+      if (f.type === "checkbox") {
+        el = h("input", { type: "checkbox", id: `dlg-${f.name}`, checked: !!f.value });
+        body.append(h("label", { class: "check" }, el, " ", f.label));
+      } else if (f.options) {
+        el = select(f.options, f.value ?? "", () => {}, { id: `dlg-${f.name}` });
+        body.append(field(f.label, el, f.hint));
+      } else {
+        el = h("input", { id: `dlg-${f.name}`, type: f.type || "text", value: f.value ?? "", inputmode: f.type === "number" ? "numeric" : null });
+        body.append(field(f.label, el, f.hint));
+      }
+      inputs[f.name] = el;
+    }
+    const collect = () => {
+      const out = {};
+      for (const f of fields) {
+        const el = inputs[f.name];
+        out[f.name] = f.type === "checkbox" ? el.checked : f.type === "number" ? Number(el.value) : el.value;
+      }
+      finish(out);
+    };
+    body.append(h("div", { class: "row end" }, h("button", { type: "button", onclick: () => finish(null) }, "Cancel"), h("button", { type: "submit", class: "primary" }, ok)));
+    const m = modal(title, body, { onClose: () => finish(null) });
+    setTimeout(() => body.querySelector("input:not([type=checkbox]), select")?.focus(), 30);
+  });
+}
+
+export async function promptDialog(title, value = "", label = "") {
+  const r = await formDialog(title, [{ name: "v", label: label || title, value }]);
+  return r ? r.v : null;
 }
