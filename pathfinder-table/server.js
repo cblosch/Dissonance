@@ -147,6 +147,15 @@ const server = http.createServer(async (req, res) => {
         const text = await runAI(game, req.body.task, req.body.prompt);
         return send(res, 200, { text });
       }
+      if (req.method === "DELETE" && !sub) {
+        if (auth.role !== "dm") return send(res, 403, { error: "Only the GM can delete this game." });
+        for (const l of listeners.get(game.code) || []) l.res.write(`event: kicked\ndata: {}\n\n`);
+        listeners.delete(game.code);
+        games.delete(game.code);
+        clearTimeout(saveTimers.get(game.code));
+        fs.rm(path.join(SAVE_DIR, game.code + ".json"), { force: true }, () => {});
+        return send(res, 200, { ok: true });
+      }
       if (req.method === "GET" && sub === "export") {
         if (auth.role !== "dm") return send(res, 403, { error: "GM only" });
         const { dmKey, ...rest } = game;

@@ -39,7 +39,13 @@ It uses `claude-opus-5-5` by default (`PF_TABLE_MODEL` overrides it). Players ne
 
 ## Look and feel
 
-A storybook theme: paper pages and ink by day, a candlelit leather-bound look at night. The theme follows your device by default; the switch in the top bar cycles between matching your device, light and dark, and remembers your choice on that device. Type is IM Fell English for headings and Crimson Pro for text (Google Fonts, with Georgia and Palatino as fallbacks).
+A matte, sepia storybook: flat paper with a faint grain, sepia inks and torn page edges, with a darker candlelit version at night. No gloss or soft shadows; the map and emoji icons are toned sepia to match. The page starts in your device's light or dark setting; the switch in the top bar flips between light and dark and remembers your choice on that device. Type is IM Fell English for headings and Crimson Pro for text (Google Fonts, with Georgia and Palatino as fallbacks).
+
+## Leaving and removing games
+
+- **‹ Exit** (top left of every game screen) goes back to the start screen. Your seat or GM role is kept; open the game again from Your games.
+- Players: **⋯ → Leave this game** gives up your seat and removes your character from that game.
+- On the start screen, **Remove** on a game takes it off your list. For games you GM it also offers **Delete the game for everyone**, which erases its plot, maps, handouts and seats.
 
 ## Phones and tablets
 

@@ -1,5 +1,5 @@
-import { h, clear, toast, field, select, MODE, applyTheme, themeToggle } from "./ui.js";
-import { init, createGame, gameInfo, joinGame, enter, myGames, forget, onError, isArtifact, listLibrary } from "./transport.js";
+import { h, clear, toast, field, select, MODE, applyTheme, themeToggle, actionSheet, confirmDialog } from "./ui.js";
+import { init, createGame, gameInfo, joinGame, enter, myGames, forget, deleteGame, onError, isArtifact, listLibrary } from "./transport.js";
 import { libraryPanel, strip } from "./library.js";
 import { loadCore } from "./data.js";
 
@@ -106,9 +106,26 @@ async function landing(error) {
           h("button", { class: "link strong", onclick: () => go(g.role === "gm" ? "gm" : "play", g.code, {}) }, `${g.name || "Untitled"} `, h("span", { class: "code" }, g.code)),
           h("span", { class: "tag" }, g.role === "gm" ? "GM" : g.gmless ? "Player · no GM" : "Player"),
           h("span", { class: "spacer" }),
-          h("button", { class: "small", onclick: async () => { await forget(g.code); landing(); } }, "Remove"))))));
+          h("button", { class: "small", onclick: (e) => removeGame(g, e.target.closest("li")) }, "Remove"))))));
     }
   } catch {}
+}
+
+// Remove a game from "Your games" (and, for its GM, optionally delete it for everyone).
+function removeGame(g, row) {
+  const drop = async (fn, done) => {
+    const parent = row.parentNode, next = row.nextSibling;
+    row.remove();
+    if (parent && !parent.children.length) parent.closest(".recent")?.remove();
+    try { await fn(g.code); toast(done); }
+    catch (err) { parent?.insertBefore(row, next); toast(`Couldn't remove it: ${err.message}`, "error"); }
+  };
+  const items = [{ icon: "📕", label: "Remove from my list", onClick: () => drop(forget, `${g.name || g.code} removed from your list`) }];
+  if (g.role === "gm") items.push({ icon: "🗑", label: "Delete the game for everyone", onClick: async () => {
+    if (await confirmDialog(`Delete “${g.name || g.code}” for everyone? Its plot, maps, handouts and seats are gone for good, and players can no longer open it.`, { ok: "Delete game", danger: true }))
+      drop(deleteGame, `${g.name || g.code} deleted`);
+  } });
+  actionSheet(g.name || g.code, items);
 }
 
 async function joinScreen(code) {

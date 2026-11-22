@@ -142,6 +142,12 @@ export function recall() {
 export async function myGames() {
   return Object.entries(recall()).map(([code, s]) => ({ code, name: s.name, role: s.key ? "gm" : "player", at: s.at || 0 })).sort((a, b) => b.at - a.at);
 }
+export async function deleteGame(code) {
+  const key = recall()[code]?.key;
+  if (!key) throw new Error("Only the GM can delete this game.");
+  await api(`/api/games/${code}?key=${encodeURIComponent(key)}`, { method: "DELETE" });
+  await forget(code);
+}
 export async function forget(code) {
   try {
     const all = JSON.parse(localStorage.getItem(STORE) || "{}");

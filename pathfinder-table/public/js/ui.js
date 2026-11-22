@@ -149,21 +149,26 @@ export function groupedSelect(groups, value, onChange, { first, ...attrs } = {})
 }
 
 // ---------------------------------------------------------------
-// Light / dark. "system" follows the device (or claude.ai's own theme setting
-// when hosted there); light and dark override it. Remembered per device.
+// Light / dark. Until the switch is first used the page follows the device
+// (or claude.ai's own theme setting when hosted there); after that it remembers
+// the choice on this device. The switch only flips between light and dark.
 // ---------------------------------------------------------------
 const THEME_KEY = "pftable.theme";
 const hostTheme = document.documentElement.getAttribute("data-theme"); // set by claude.ai, if any
 const svg = (body) => `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">${body}</svg>`;
 const THEMES = {
-  system: { icon: svg('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>'), label: "Theme: matches your device" },
   light: { icon: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'), label: "Theme: light" },
   dark: { icon: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/>'), label: "Theme: dark" },
 };
+const deviceTheme = () => (hostTheme === "light" || hostTheme === "dark" ? hostTheme : window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+// The stored choice, or (until the switch is first used) the device's / claude.ai's setting
 export function getTheme() {
-  try { return localStorage.getItem(THEME_KEY) || "system"; } catch { return "system"; }
+  let t = null;
+  try { t = localStorage.getItem(THEME_KEY); } catch {}
+  return t === "light" || t === "dark" ? t : deviceTheme();
 }
-export function applyTheme(t = getTheme()) {
+const chosenTheme = () => { try { const t = localStorage.getItem(THEME_KEY); return t === "light" || t === "dark" ? t : null; } catch { return null; } };
+export function applyTheme(t = chosenTheme()) {
   const root = document.documentElement;
   if (t === "light" || t === "dark") root.setAttribute("data-theme", t);
   else if (hostTheme) root.setAttribute("data-theme", hostTheme);
@@ -171,15 +176,15 @@ export function applyTheme(t = getTheme()) {
 }
 export function themeToggle() {
   const btn = h("button", { class: "small theme-btn", type: "button" });
-  const draw = () => { const t = THEMES[getTheme()] || THEMES.system; btn.innerHTML = t.icon; btn.title = `${t.label} (tap to change)`; btn.setAttribute("aria-label", btn.title); };
+  // shows the mode you'd switch to
+  const draw = () => { const next = getTheme() === "dark" ? "light" : "dark"; btn.innerHTML = THEMES[next].icon; btn.title = `Switch to ${next} mode`; btn.setAttribute("aria-label", btn.title); };
   btn.addEventListener("click", () => {
-    const order = ["system", "light", "dark"];
-    const next = order[(order.indexOf(getTheme()) + 1) % order.length];
+    const next = getTheme() === "dark" ? "light" : "dark";
     try { localStorage.setItem(THEME_KEY, next); } catch {}
     applyTheme(next);
     document.querySelectorAll(".theme-btn").forEach((b) => b !== btn && b.dispatchEvent(new Event("pf-theme")));
     draw();
-    toast(THEMES[next].label);
+    toast(next === "dark" ? "Dark mode" : "Light mode");
   });
   btn.addEventListener("pf-theme", draw);
   draw();

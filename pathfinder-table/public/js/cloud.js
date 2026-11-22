@@ -85,13 +85,32 @@ async function addMine(code, entry) {
   m.games = { ...(m.games || {}), [code]: { ...(m.games?.[code] || {}), ...entry, at: Date.now() } };
   await writeDoc(`data/users/${uid}/mine`, m, { force: true });
 }
+// Codes removed during this visit stay hidden even if a read returns a slightly older copy.
+const removedCodes = new Set();
 export async function myGames() {
   const m = await readDoc(`data/users/${uid}/mine`, { games: {} });
-  return Object.entries(m.games || {}).map(([code, g]) => ({ code, ...g })).sort((a, b) => (b.at || 0) - (a.at || 0));
+  return Object.entries(m.games || {}).filter(([code]) => !removedCodes.has(code)).map(([code, g]) => ({ code, ...g })).sort((a, b) => (b.at || 0) - (a.at || 0));
 }
 export async function forget(code) {
+  removedCodes.add(code);
   const m = await readDoc(`data/users/${uid}/mine`, { games: {} });
-  if (m.games?.[code]) { delete m.games[code]; await writeDoc(`data/users/${uid}/mine`, m, { force: true }); }
+  if (m.games?.[code]) {
+    delete m.games[code];
+    await doc(`data/users/${uid}/mine`).set(m); // direct write so a failure reaches the caller
+    lastWritten.set(`data/users/${uid}/mine`, json(m));
+  }
+}
+
+// GM only: delete the game for everyone (its private data, public copies and code).
+export async function deleteGame(code) {
+  const g = (await myGames()).find((x) => x.code === code) || (await readDoc(`data/users/${uid}/mine`, { games: {} })).games?.[code];
+  if (!g || g.role !== "gm") throw new Error("Only the GM can delete this game.");
+  const base = `data/users/${uid}/game-${code}`, pub = `pub/${uid}/t/${code}`;
+  const main = await readDoc(base, null);
+  const dels = [base, pub, `${pub}/view/map`, `lobby/${code}`, ...[0, 1, 2, 3, 4, 5].map((n) => `${pub}/seat/${n}`),
+    ...(main?.mapIds || []).map((id) => `${base}/maps/${id}`), ...(main?.handoutIds || []).map((id) => `${base}/handouts/${id}`)];
+  await Promise.all(dels.map((p) => doc(p).delete().catch(() => {})));
+  await forget(code);
 }
 
 // ---------------- character library (private to each person) ----------------

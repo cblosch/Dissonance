@@ -459,10 +459,10 @@ export async function mountDM(app, { home } = {}) {
       { icon: "🔗", label: share.inviteLabel, onClick: () => copyText(share.invite) },
       share.private ? { icon: "🔑", label: share.privateLabel, onClick: () => copyText(share.private) } : null,
       { icon: "💾", label: "Export game (JSON)", onClick: doExport },
-      { icon: "🏠", label: "Back to start", onClick: () => home && home() },
+      { icon: "‹", label: "Exit to the start screen", onClick: () => home && home() },
     ];
     clear(header).append(
-      h("button", { class: "brand link", onclick: () => home && home() }, "Pathfinder Table"),
+      h("button", { class: "small exit-btn", title: "Leave this screen and go back to your games", onclick: () => home && home() }, "‹ Exit"),
       h("span", { class: "title" }, state.name, state.plot.title ? h("span", { class: "hide-mobile" }, ` — ${state.plot.title}`) : null),
       h("span", { class: "tag" }, "GM"),
       h("span", { class: "spacer" }),

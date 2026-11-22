@@ -21,6 +21,7 @@ export const myGames = (...a) => T.myGames(...a);
 export const forget = (...a) => T.forget(...a);
 export const onError = (fn) => T.onError && T.onError(fn);
 export const onWaitingForGM = (fn) => T.onWaitingForGM && T.onWaitingForGM(fn);
+export const deleteGame = (...a) => T.deleteGame(...a);
 export const assignCharacter = (...a) => T.assignCharacter(...a);
 export const listLibrary = (...a) => T.listLibrary(...a);
 export const saveToLibrary = (...a) => T.saveToLibrary(...a);

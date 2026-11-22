@@ -1,5 +1,5 @@
 import { h, clear, tabs, toast, copyText, modal, isMobile, onLayoutChange, actionSheet, themeToggle } from "./ui.js";
-import { act, connect, session, shareInfo, canPrint, isArtifact, onWaitingForGM, config, askAI, saveToLibrary } from "./transport.js";
+import { act, connect, session, shareInfo, canPrint, isArtifact, onWaitingForGM, config, askAI, saveToLibrary, forget } from "./transport.js";
 import { pickFromLibrary } from "./library.js";
 import { generateMap, MAP_TYPES } from "./map.js";
 import { encounterBuilder } from "./dmtools.js";
@@ -289,13 +289,20 @@ export function mountPlayer(app, { home } = {}) {
     clear(app).append(h("div", { class: "landing" }, h("section", { class: "card" }, h("h2", {}, "You've left this game"), h("p", {}, "The GM freed your seat."), h("button", { onclick: () => home && home() }, "Back to start"))));
   });
 
+  async function leaveGame() {
+    const c = myChar();
+    if (!(await confirmDialog(`Leave “${state.name}” and give up seat ${state.me.slot + 1}?${c ? ` ${c.name} is removed from this game (save a copy to My characters first if you want to keep them).` : ""}`, { ok: "Leave game", danger: true }))) return;
+    try { await act("leave"); await forget(session.code); toast("You left the game"); setTimeout(() => home && home(), 600); }
+    catch (e) { toast(e.message, "error"); }
+  }
+
   function drawHeader() {
     if (!state) return;
     const c = myChar();
     const n = unseen();
     const share = shareInfo(state);
     clear(header).append(
-      h("button", { class: "brand link", onclick: () => home && home() }, "Pathfinder Table"),
+      h("button", { class: "small exit-btn", title: "Leave this screen and go back to your games", onclick: () => home && home() }, "‹ Exit"),
       h("span", { class: "title" }, state.name),
       h("span", { class: "tag" }, `Seat ${state.me.slot + 1}${c ? " · " + c.name : ""}`),
       n && !isMobile() ? h("button", { class: "small primary", onclick: () => tabset.select("handouts") }, `📜 ${n} new`) : null,
@@ -304,7 +311,8 @@ export function mountPlayer(app, { home } = {}) {
       themeToggle(),
       h("button", { class: "icon-btn menu-btn", title: "Menu", onclick: () => actionSheet(state.name, [
         share.private ? { icon: "🔗", label: share.privateLabel, onClick: () => copyText(share.private) } : null,
-        { icon: "🏠", label: "Back to start", onClick: () => home && home() },
+        { icon: "‹", label: "Exit to the start screen", onClick: () => home && home() },
+        { icon: "🚪", label: "Leave this game (give up my seat)", onClick: leaveGame },
       ]) }, "⋯"));
   }
 }
