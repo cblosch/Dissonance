@@ -1,0 +1,19 @@
+{
+  "name": "pathfinder-table",
+  "version": "1.0.0",
+  "description": "Run Pathfinder 2e Remaster games for up to six players and a GM: character builder, maps, handouts and GM tools.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "build-data": "python3 tools/build_data.py"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^1.12.0"
+  },
+  "license": "MIT"
+}
