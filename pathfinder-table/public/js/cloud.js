@@ -41,6 +41,8 @@ export async function init() {
 
 // ---------------- paths ----------------
 const doc = (p) => db.doc(p);
+// Snapshot data from the platform is frozen; take an editable copy before changing anything.
+const plain = (snap) => (snap.exists ? structuredClone(snap.data()) : undefined);
 const json = (x) => JSON.stringify(x);
 function paths(code, { gmless, gm }) {
   return gmless
@@ -78,7 +80,7 @@ export function onError(fn) { reportFn = fn; }
 // ---------------- games this person is in ----------------
 async function readDoc(path, fallback) {
   const snap = await doc(path).get();
-  return snap.exists ? snap.data() : fallback;
+  return snap.exists ? plain(snap) : fallback;
 }
 async function addMine(code, entry) {
   const m = await readDoc(`data/users/${uid}/mine`, { games: {} });
@@ -140,7 +142,7 @@ export async function config() {
 async function lookup(code) {
   const snap = await doc(`lobby/${code}`).get();
   if (!snap.exists) throw new Error("No game with that code. Check it with whoever started the game.");
-  return snap.data();
+  return plain(snap);
 }
 export async function gameInfo(code) {
   const lob = await lookup(code);
@@ -222,7 +224,7 @@ function connectPlayer(onState, onKicked) {
   const unsubs = [];
   unsubs.push(doc(p.pub).onSnapshot((snap) => {
     if (!snap.exists) { if (!ready) onWaiting && onWaiting(); return; }
-    main = snap.data();
+    main = plain(snap);
     const ack = main.acks?.[uid];
     if (ack && ack.seq > q.ack) {
       q.ack = ack.seq;
@@ -243,11 +245,11 @@ function connectPlayer(onState, onKicked) {
     if (slot.index !== mySlot) {
       mySlot = slot.index;
       seatUnsub && seatUnsub();
-      seatUnsub = doc(`${p.pub}/seat/${mySlot}`).onSnapshot((s) => { if (s.exists) { seat = s.data(); ready = true; emit(); } }, report);
+      seatUnsub = doc(`${p.pub}/seat/${mySlot}`).onSnapshot((s) => { if (s.exists) { seat = plain(s); ready = true; emit(); } }, report);
     }
     emit();
   }, report));
-  unsubs.push(doc(`${p.pub}/view/map`).onSnapshot((s) => { map = s.exists ? s.data().map : null; emit(); }, report));
+  unsubs.push(doc(`${p.pub}/view/map`).onSnapshot((s) => { map = s.exists ? plain(s).map : null; emit(); }, report));
   if (session.gmless) startHosting(code);
   const close = () => { unsubs.forEach((u) => u()); seatUnsub && seatUnsub(); stopHosting(); };
   return { close };
@@ -284,8 +286,8 @@ async function loadGame(code, opts) {
   store = paths(code, opts);
   const m = await readDoc(store.base, null);
   if (!m) throw new Error(opts.gmless ? "This game no longer exists." : "This game belongs to a different account, or it was deleted.");
-  const maps = (await Promise.all((m.mapIds || []).map((id) => doc(`${store.base}/maps/${id}`).get()))).filter((s) => s.exists).map((s) => s.data());
-  const handouts = (await Promise.all((m.handoutIds || []).map((id) => doc(`${store.base}/handouts/${id}`).get()))).filter((s) => s.exists).map((s) => s.data());
+  const maps = (await Promise.all((m.mapIds || []).map((id) => doc(`${store.base}/maps/${id}`).get()))).filter((s) => s.exists).map(plain);
+  const handouts = (await Promise.all((m.handoutIds || []).map((id) => doc(`${store.base}/handouts/${id}`).get()))).filter((s) => s.exists).map(plain);
   processed = m.processed || {};
   const { mapIds, handoutIds, processed: _p, ...rest } = m;
   game = { ...rest, maps, handouts };
@@ -339,7 +341,7 @@ function watchQueues() {
   for (const r of joinRequests) uids.add(r);
   for (const u of uids) {
     if (watched.has(u)) continue;
-    watched.set(u, doc(`inbox/${u}/q/${game.code}`).onSnapshot((snap) => { if (snap.exists) processQueue(u, snap.data()); }, report));
+    watched.set(u, doc(`inbox/${u}/q/${game.code}`).onSnapshot((snap) => { if (snap.exists) processQueue(u, plain(snap)); }, report));
   }
 }
 

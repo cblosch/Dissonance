@@ -617,7 +617,6 @@ body {
     radial-gradient(circle at 91% 88%, var(--fox) 0 3px, transparent 7px),
     radial-gradient(circle at 46% 37%, var(--fox) 0 1.5px, transparent 4px),
     /* tea stains: large soft rings */
-    radial-gradient(ellipse 34% 26% at 78% 22%, transparent 62%, var(--stain) 70%, transparent 78%),
     radial-gradient(ellipse 40% 30% at 18% 70%, var(--stain), transparent 70%),
     radial-gradient(ellipse 28% 22% at 60% 92%, var(--stain), transparent 72%),
     /* aged, darker edges */

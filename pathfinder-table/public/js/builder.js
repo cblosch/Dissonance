@@ -421,13 +421,21 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
   }
 
   function render() {
-    const y = form.scrollTop;
+    // Keep every scroll position (the window and any scrolling panel around the
+    // builder): rebuilding the form briefly shortens the page, which would snap them to the top.
+    const scrollers = [];
+    for (let el = form; el; el = el.parentElement) if (el.scrollTop) scrollers.push([el, el.scrollTop]);
+    const wy = window.scrollY;
+    const keepHeight = form.offsetHeight;
+    form.style.minHeight = keepHeight + "px"; // hold the height while the content is swapped
     clear(form);
     form.append(basics(), attributes(), skills(), feats());
     const sp = spells();
     if (sp) form.append(sp);
     form.append(equipment(), extras());
-    form.scrollTop = y;
+    form.style.minHeight = "";
+    for (const [el, y] of scrollers) el.scrollTop = y;
+    if (window.scrollY !== wy) window.scrollTo(0, wy);
     summary();
   }
   render();

@@ -204,7 +204,7 @@ export const ancestryGroups = (ancestries) => {
   const groups = [];
   for (const core of [true, false]) for (const r of RARITY_ORDER) {
     const list = ancestries.filter((a) => /Player Core/.test(a.source || "") === core && (a.rarity || "common") === r);
-    if (list.length) groups.push({ label: `${core ? "Core" : "Other"}: ${r}`, options: list.map((a) => a.name) });
+    if (list.length) groups.push({ label: `${core ? "Core" : "Other"} - ${r[0].toUpperCase() + r.slice(1)}`, options: list.map((a) => a.name) });
   }
   return groups;
 };
