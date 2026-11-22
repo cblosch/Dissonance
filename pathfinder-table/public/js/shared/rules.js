@@ -69,7 +69,7 @@ const LMU = ["unarmored", "light", "medium"];
 const LU = ["unarmored", "light"];
 const ALLA = ["unarmored", "light", "medium", "heavy"];
 const up = (stats, rank) => (Array.isArray(stats) ? stats : [stats]).map((s) => [s, rank]);
-const caster = (extra) => ({ 7: up("spell", 2), 15: up("spell", 3), 19: up("spell", 4), ...extra });
+const caster = (extra) => merge({ 7: up("spell", 2), 15: up("spell", 3), 19: up("spell", 4) }, extra);
 const merge = (...objs) => {
   const out = {};
   for (const o of objs) for (const [lvl, arr] of Object.entries(o)) out[lvl] = [...(out[lvl] || []), ...arr];
@@ -132,7 +132,7 @@ export const PROGRESSION = {
     5: up("reflex", 2), 9: up("fortitude", 2), 11: [...up("perception", 2), ...up(SU, 2)], 13: up("unarmored", 2), 17: up("will", 3) }) },
 };
 
-export const TRADITION = { Bard: "occult", Cleric: "divine", Druid: "primal", Oracle: "divine", Wizard: "arcane" };
+export const TRADITION = { Bard: "occult", Cleric: "divine", Druid: "primal", Oracle: "divine", Wizard: "arcane", Animist: "divine", Magus: "arcane", Necromancer: "occult", Psychic: "occult" };
 export const SORCERER_TRADITION = {
   "Bloodline: Aberrant": "occult", "Bloodline: Angelic": "divine", "Bloodline: Demonic": "divine",
   "Bloodline: Diabolic": "divine", "Bloodline: Draconic": "arcane", "Bloodline: Elemental": "primal",
@@ -142,19 +142,47 @@ export const WITCH_TRADITION = {
   "Faith's Flamekeeper": "divine", "Silence in Snow": "primal", "Spinner of Threads": "occult",
   "Starless Shadow": "occult", "The Inscribed One": "arcane", "The Resentment": "occult", "Wilding Steward": "primal",
 };
-export const SPONTANEOUS = ["Bard", "Oracle", "Sorcerer"];
-export const FULL_CASTERS = ["Bard", "Cleric", "Druid", "Oracle", "Sorcerer", "Witch", "Wizard"];
+export const SPONTANEOUS = ["Bard", "Oracle", "Sorcerer", "Psychic", "Summoner"];
+// Classes that pick spells by rank in the builder
+export const FULL_CASTERS = ["Bard", "Cleric", "Druid", "Oracle", "Sorcerer", "Witch", "Wizard", "Animist", "Magus", "Necromancer", "Psychic", "Summoner"];
+// Classes whose per-level slot tables aren't in the bundled data: the builder marks their counts as estimates
+export const ESTIMATED_SLOTS = ["Animist", "Magus", "Necromancer", "Psychic", "Summoner"];
+const SUBCLASS_TRADITION_CLASSES = ["Sorcerer", "Witch", "Summoner"];
 
-export function traditionFor(char) {
-  if (char.class === "Sorcerer") return SORCERER_TRADITION[char.subclass] || "arcane";
-  if (char.class === "Witch") return WITCH_TRADITION[char.subclass] || "occult";
+// classData is optional; with it, a subclass's own tradition (from the data) is used,
+// and subclasses whose tradition varies take the character's choice.
+export function traditionFor(char, classData) {
+  if (SUBCLASS_TRADITION_CLASSES.includes(char.class)) {
+    const sub = classData?.subclasses?.find((x) => x.name === char.subclass);
+    return sub?.tradition || (char.class === "Sorcerer" ? SORCERER_TRADITION : char.class === "Witch" ? WITCH_TRADITION : {})[char.subclass] || char.choices?.tradition || null;
+  }
   return TRADITION[char.class] || null;
+}
+export function needsTraditionChoice(char, classData) {
+  if (!SUBCLASS_TRADITION_CLASSES.includes(char.class) || !char.subclass) return false;
+  const sub = classData?.subclasses?.find((x) => x.name === char.subclass);
+  return !sub?.tradition && !(char.class === "Sorcerer" ? SORCERER_TRADITION : char.class === "Witch" ? WITCH_TRADITION : {})[char.subclass];
+}
+
+// Key attribute options (Psychic's data leaves it open: Intelligence or Charisma)
+export const keyOptions = (classData) => (classData.keyAttribute.length ? classData.keyAttribute : ["int", "cha"]);
+
+// Progression: verified tables above for Player Core classes, extracted from class text for the rest
+export function progressionFor(classData) {
+  return PROGRESSION[classData?.name] || (classData?.progression ? { ws: classData.progression.ws, gws: classData.progression.gws, inc: classData.progression.inc, extracted: true } : null);
 }
 
 // Default spell slots per day for full casters. Sorcerers get one more per rank.
 // Shown as editable defaults in the builder.
 export function spellSlots(className, level) {
   if (!FULL_CASTERS.includes(className)) return {};
+  if (ESTIMATED_SLOTS.includes(className)) {
+    // The text gives one 1st-rank slot at 1st level; later levels are an estimate to adjust from the class table.
+    const out = {};
+    for (let r = 1; r <= 9; r++) { const unlock = 2 * r - 1; if (level >= unlock) out[r] = level >= unlock + 1 ? 2 : 1; }
+    if (["Magus", "Summoner"].includes(className)) { const ranks = Object.keys(out).map(Number); for (const r of ranks) if (r < Math.max(...ranks) - 1) delete out[r]; }
+    return out;
+  }
   const extra = className === "Sorcerer" ? 1 : 0;
   const slots = {};
   for (let r = 1; r <= 9; r++) {
@@ -176,7 +204,7 @@ export function proficiencyTable(char, classData) {
     medium: classData.defenses.medium, heavy: classData.defenses.heavy,
     classDC: classData.classDC ? 1 : 0, spell: classData.spellcasting ? 1 : 0,
   };
-  const prog = PROGRESSION[classData.name];
+  const prog = progressionFor(classData);
   if (!prog) return p;
   const apply = (table) => {
     for (const [lvl, arr] of Object.entries(table || {})) {
@@ -221,7 +249,7 @@ export function computeAttributes(char, ancestry, background, classData) {
     }
   }
   if (background) background.boosts.forEach((opts, i) => boost(opts.length === 1 ? opts[0] : (b.background || [])[i]));
-  if (classData) boost(classData.keyAttribute.length === 1 ? classData.keyAttribute[0] : char.keyAttribute);
+  if (classData) boost(keyOptions(classData).length === 1 ? keyOptions(classData)[0] : char.keyAttribute);
   (b.free || []).forEach(boost);
   for (const lvl of [5, 10, 15, 20]) if (char.level >= lvl) (b["l" + lvl] || []).forEach(boost);
   return { mods: val, partial };
@@ -237,7 +265,7 @@ export function computeCharacter(char, data) {
   const level = char.level || 1;
   const { mods } = computeAttributes(char, ancestry, background, classData);
   const prof = classData ? proficiencyTable(char, classData) : {};
-  const keyAttr = classData ? (classData.keyAttribute.length === 1 ? classData.keyAttribute[0] : char.keyAttribute || classData.keyAttribute[0]) : "str";
+  const keyAttr = classData ? (keyOptions(classData).length === 1 ? keyOptions(classData)[0] : char.keyAttribute || keyOptions(classData)[0]) : "str";
 
   // skills
   const skillRank = {};
@@ -248,6 +276,8 @@ export function computeCharacter(char, data) {
   trainedSources.push(...(char.skills?.trained || []));
   if (char.class === "Cleric" && char.deitySkill) trainedSources.push(char.deitySkill);
   for (const s of trainedSources) if (s in skillRank) skillRank[s] = Math.max(skillRank[s], 1);
+  // Skilled Human: trained in one chosen skill, expert in it at 5th level
+  if (char.heritage === "Skilled Human" && char.skills?.heritage in skillRank) skillRank[char.skills.heritage] = Math.max(skillRank[char.skills.heritage], level >= 5 ? 2 : 1);
   const increases = char.skills?.increases || {};
   for (const lvl of Object.keys(increases).map(Number).sort((a, b) => a - b)) {
     if (lvl > level) continue;
@@ -284,7 +314,7 @@ export function computeCharacter(char, data) {
   const loreMods = lores.map((l) => ({ name: l, mod: profBonus(1, level) + mods.int }));
 
   // strikes
-  const spec = PROGRESSION[char.class] || {};
+  const spec = progressionFor(classData) || {};
   const specBonus = (rank) => {
     if (!spec.ws || level < spec.ws || rank < 2) return 0;
     const base = [0, 0, 2, 3, 4][rank];
@@ -344,7 +374,7 @@ export function computeCharacter(char, data) {
     saves, skills, skillRank, lores: loreMods, strikes,
     classDC: prof.classDC ? 10 + profBonus(prof.classDC, level) + mods[keyAttr] : null,
     spellAttack, spellDC: spellAttack !== null ? 10 + spellAttack : null, spellAttr,
-    tradition: traditionFor(char),
+    tradition: traditionFor(char, classData),
     speed: (ancestry?.speed || 25) + speedPenalty,
     size: ancestry?.size, vision: ancestry?.vision,
     armor, armorCat, checkPenalty, bulkLimit,
@@ -359,7 +389,8 @@ export function freeSkillCount(char, data) {
   const ancestry = data.ancestries.find((a) => a.name === char.ancestry);
   const background = data.backgrounds.find((b) => b.name === char.background);
   const { mods } = computeAttributes({ ...char, level: 1 }, ancestry, background, classData);
-  return (classData?.additionalSkills || 0) + Math.max(0, mods.int);
+  const natural = Object.values(char.feats || {}).includes("Natural Skill") ? 2 : 0;
+  return (classData?.additionalSkills || 0) + Math.max(0, mods.int) + natural;
 }
 
 // Validation: returns a list of human-readable problems
@@ -374,7 +405,9 @@ export function validateCharacter(char, data) {
   if (!background) issues.push("Choose a background.");
   if (!classData) issues.push("Choose a class.");
   if (classData?.subclasses?.length && !char.subclass) issues.push(`Choose a ${classData.subclassLabel}.`);
-  if (classData && classData.keyAttribute.length > 1 && !char.keyAttribute) issues.push("Choose a key attribute.");
+  if (classData && keyOptions(classData).length > 1 && !char.keyAttribute) issues.push("Choose a key attribute.");
+  if (classData && needsTraditionChoice(char, classData) && !char.choices?.tradition) issues.push("Choose your spellcasting tradition.");
+  if (char.heritage === "Skilled Human" && !char.skills?.heritage) issues.push("Choose your Skilled Human skill.");
   const b = char.boosts || {};
   const dupe = (arr) => arr && new Set(arr.filter(Boolean)).size !== arr.filter(Boolean).length;
   if ((b.free || []).filter(Boolean).length < 4) issues.push("Pick all four free attribute boosts.");
@@ -418,5 +451,10 @@ export function featSlotsFor(char, classData) {
   add(classData.classFeatLevels, "class", "class");
   add(classData.skillFeatLevels, "skill", "skill");
   add(classData.generalFeatLevels, "general", "general");
+  // feats granted by a heritage or by other feats
+  const chosen = Object.values(char.feats || {});
+  if (char.heritage === "Versatile Human") slots.push({ key: "heritage-1", kind: "general", level: 1, label: "general (Versatile Human)" });
+  if (chosen.includes("Natural Ambition")) slots.push({ key: "bonusclass-1", kind: "class", level: 1, label: "class (Natural Ambition)" });
+  if (chosen.includes("General Training")) slots.push({ key: "bonusgeneral-1", kind: "general", level: 1, label: "general (General Training)" });
   return slots.sort((a, b) => a.level - b.level);
 }

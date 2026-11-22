@@ -2,9 +2,19 @@ import { h, clear, cap, signed, field, select, modal, richText, toast, confirmDi
 import { load, coreData } from "./data.js";
 import {
   ATTRS, ATTR_NAMES, SKILLS, RANKS, AON, computeCharacter, validateCharacter, freeSkillCount,
-  featSlotsFor, traditionFor, FULL_CASTERS, SPONTANEOUS,
+  featSlotsFor, traditionFor, FULL_CASTERS, SPONTANEOUS, keyOptions, needsTraditionChoice, ESTIMATED_SLOTS, progressionFor,
 } from "./shared/rules.js";
 import { autoBuild } from "./companions.js";
+
+const shortSource = (s) => String(s || "").replace(/^Pathfinder (Lost Omens )?/, "");
+
+// "Boosts: Int or Wis, free · Trained: Religion, Scribing Lore · Feat: Student of the Canon"
+export function bgSummary(b) {
+  if (!b) return "";
+  const boosts = b.boosts.map((o) => (o.length >= 6 ? "free" : o.map((x) => x.toUpperCase()).join(" or "))).join(", ");
+  const trained = [...b.skills.map(cap), ...(b.lore || [])].join(", ");
+  return `Boosts: ${boosts} · Trained: ${trained || "—"}${b.feat ? ` · Feat: ${b.feat}` : ""}`;
+}
 
 export function blankCharacter(level = 1) {
   return {
@@ -75,16 +85,21 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
     sec.append(h("div", { class: "grid2" },
       field("Name", name),
       field("Level", select(Array.from({ length: 20 }, (_, i) => i + 1), c.level, (v) => set("level", +v))),
-      field("Ancestry", select(["", ...data.ancestries.map((x) => x.name)].map((v) => ({ value: v, label: v || "— choose —" })), c.ancestry, (v) => { c.heritage = ""; c.boosts.ancestry = []; set("ancestry", v); })),
+      field("Ancestry", select([{ value: "", label: "— choose —" }, ...data.ancestries.map((x) => ({ value: x.name, label: `${x.name}${x.source.includes("Player Core") ? "" : " · " + shortSource(x.source)}` }))], c.ancestry, (v) => { c.heritage = ""; c.boosts.ancestry = []; set("ancestry", v); })),
       field("Heritage", select([{ value: "", label: a ? "— choose —" : "pick an ancestry first" }, ...heritages.map((x) => ({ value: x.name, label: x.name + (x.versatile ? " (versatile)" : "") }))], c.heritage, (v) => set("heritage", v))),
-      field("Background", select(["", ...data.backgrounds.map((x) => x.name)].map((v) => ({ value: v, label: v || "— choose —" })), c.background, (v) => { c.boosts.background = []; set("background", v); })),
-      field("Class", select(["", ...data.classes.map((x) => x.name)].map((v) => ({ value: v, label: v || "— choose —" })), c.class, (v) => { c.subclass = ""; c.keyAttribute = ""; c.feats = Object.fromEntries(Object.entries(c.feats).filter(([key]) => !key.startsWith("class"))); c.spells = { cantrips: [], known: {}, slotOverrides: {} }; set("class", v); })),
+      field("Background", h("button", { class: `picker-btn ${c.background ? "" : "empty"}`, onclick: () => pickBackground() },
+        c.background ? h("span", {}, h("strong", {}, c.background), h("small", { class: "muted" }, bgSummary(background()))) : "Choose a background…")),
+      field("Class", select([{ value: "", label: "— choose —" }, ...data.classes.map((x) => ({ value: x.name, label: `${x.name}${x.source.includes("Player Core") ? "" : " · " + shortSource(x.source)}` }))], c.class, (v) => { c.subclass = ""; c.keyAttribute = ""; c.feats = Object.fromEntries(Object.entries(c.feats).filter(([key]) => !key.startsWith("class"))); c.spells = { cantrips: [], known: {}, slotOverrides: {} }; set("class", v); })),
     ));
     if (k?.subclasses?.length) {
       sec.append(field(cap(k.subclassLabel), select([{ value: "", label: "— choose —" }, ...k.subclasses.map((s) => s.name)], c.subclass, (v) => set("subclass", v))));
     }
-    if (k && k.keyAttribute.length > 1) {
-      sec.append(field("Key attribute", select([{ value: "", label: "— choose —" }, ...k.keyAttribute.map((x) => ({ value: x, label: ATTR_NAMES[x] }))], c.keyAttribute, (v) => set("keyAttribute", v))));
+    if (k && keyOptions(k).length > 1) {
+      sec.append(field("Key attribute", select([{ value: "", label: "— choose —" }, ...keyOptions(k).map((x) => ({ value: x, label: ATTR_NAMES[x] }))], c.keyAttribute, (v) => set("keyAttribute", v))));
+    }
+    if (k && needsTraditionChoice(c, k)) {
+      sec.append(field("Spellcasting tradition", select([{ value: "", label: "— choose —" }, ...["arcane", "divine", "occult", "primal"].map((t) => ({ value: t, label: cap(t) }))], c.choices.tradition || "", (v) => set("choices.tradition", v)),
+        `Your ${k.subclassLabel} lets you choose; check its text below.`));
     }
     if (c.class === "Cleric" || c.class === "Champion") {
       sec.append(deityPicker());
@@ -107,7 +122,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
     if (her) info.append(infoCard(her.name, "Heritage", her.desc));
     const bg = background();
     if (bg) info.append(infoCard(bg.name, `Trained: ${[...bg.skills.map(cap), ...bg.lore].join(", ")} · Feat: ${bg.feat || "—"}`, bg.desc));
-    if (k) info.append(infoCard(k.name, `${k.hp} HP/level · Key: ${k.keyAttribute.map((x) => ATTR_NAMES[x]).join(" or ")}`, k.desc));
+    if (k) info.append(infoCard(k.name, `${k.hp} HP/level · Key: ${keyOptions(k).map((x) => ATTR_NAMES[x]).join(" or ")} · ${k.source.replace("Pathfinder ", "")}${progressionFor(k)?.extracted ? " · proficiency increases read from the class text; check your saves and weapons against AoN" : ""}`, k.desc));
     const sub = k?.subclasses?.find((s) => s.name === c.subclass);
     if (sub) info.append(infoCard(sub.name, cap(k.subclassLabel), sub.desc));
     sec.append(info);
@@ -136,6 +151,14 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
       h("div", { class: "row between" }, h("strong", {}, title), aonLink(title)),
       h("small", { class: "muted" }, sub), body,
       h("button", { class: "link", onclick: (e) => { body.classList.toggle("collapsed"); e.target.textContent = body.classList.contains("collapsed") ? "more" : "less"; } }, "more"));
+  }
+
+  function pickBackground() {
+    openPicker("Choose a background", data.backgrounds, {
+      meta: (b) => `${bgSummary(b)} · ${shortSource(b.source)}`,
+      search: (b) => `${bgSummary(b)} ${b.source}`,
+      onPick: (b) => { c.boosts.background = []; set("background", b.name); },
+    });
   }
 
   function boostPicker(label, opts, current, onPick, taken = []) {
@@ -174,7 +197,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
         sec.append(boostPicker(`${bg.name} boost ${i + 1}${opts.length < 6 ? "" : " (free)"}`, opts, opts.length === 1 ? opts[0] : b.background[i], (v) => { b.background[i] = v; render(); }, others));
       });
     }
-    if (k) sec.append(h("p", {}, `${k.name} key attribute: +1 ${(k.keyAttribute.length === 1 ? k.keyAttribute[0] : c.keyAttribute || "?").toUpperCase()}`));
+    if (k) sec.append(h("p", {}, `${k.name} key attribute: +1 ${(keyOptions(k).length === 1 ? keyOptions(k)[0] : c.keyAttribute || "?").toUpperCase()}`));
     const setPick = (key, label) => {
       b[key] ||= [];
       sec.append(h("div", { class: "boost-row" }, h("span", { class: "lbl" }, label),
@@ -211,6 +234,9 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
       }
       sec.append(grid);
     }
+    if (c.heritage === "Skilled Human") {
+      sec.append(field("Skilled Human skill (expert at 5th level)", select([{ value: "", label: "— choose —" }, ...Object.keys(SKILLS).map((s) => ({ value: s, label: cap(s) }))], c.skills.heritage || "", (v) => set("skills.heritage", v))));
+    }
     const lore = h("input", { value: (c.skills.lore || []).join(", "), placeholder: "e.g. Tavern Lore", onchange: (e) => set("skills.lore", e.target.value.split(",").map((x) => x.trim()).filter(Boolean)) });
     sec.append(field("Extra Lore skills (comma separated, e.g. from feats)", lore));
     return sec;
@@ -239,7 +265,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
     const all = await load("feats");
     const a = ancestry();
     const her = c.heritage ? data.versatileHeritages.find((v) => v.name === c.heritage) : null;
-    const ancTraits = [a?.name.toLowerCase(), her?.name.toLowerCase()].filter(Boolean);
+    const ancTraits = [a?.trait || a?.name.toLowerCase(), her?.name.toLowerCase().replace(/ /g, "-")].filter(Boolean);
     const chosen = new Set(Object.values(c.feats));
     const eligible = all.filter((f) => {
       if (f.level > slot.level) return false;
@@ -261,13 +287,15 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
   function spells() {
     const k = klass();
     if (!k || !FULL_CASTERS.includes(k.name)) return null;
-    const trad = traditionFor(c);
+    const trad = traditionFor(c, klass());
     const comp = computeCharacter(c, data);
     const sec = h("section", { class: "bsec" }, h("h3", {}, `5. Spells (${cap(trad)})`),
       h("p", { class: "hint" }, SPONTANEOUS.includes(k.name)
         ? "Spontaneous caster: pick your repertoire. Default repertoire size equals your slots per rank."
         : "Prepared caster: pick what you prepare each day. You can change these between sessions."),
-      h("p", { class: "hint" }, "Slot counts are defaults for the class; adjust them if a feature changes them (check your class table on AoN)."));
+      ESTIMATED_SLOTS.includes(k.name)
+        ? h("p", { class: "warn" }, `The ${k.name} slot table isn't in the bundled rules data, so these counts are an estimate (1st level is exact). Set them from the ${k.name} Spells per Day table on Archives of Nethys.`)
+        : h("p", { class: "hint" }, "Slot counts are defaults for the class; adjust them if a feature changes them (check your class table on AoN)."));
     const row = (label, list, max, onAdd, onRemove, slotKey) => h("div", { class: "spell-rank" },
       h("div", { class: "row between" }, h("strong", {}, label),
         slotKey ? h("span", {}, "slots ", h("input", { type: "number", min: 0, max: 9, value: comp.slots[slotKey] ?? 0, style: { width: "3.5em" }, onchange: (e) => { c.spells.slotOverrides[slotKey] = +e.target.value; render(); } })) : h("span", {}, `${list.length}/${max}`)),
@@ -283,7 +311,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
 
   async function pickSpell(rank) {
     const all = await load("spells");
-    const trad = traditionFor(c);
+    const trad = traditionFor(c, klass());
     const list = all.filter((s) => !s.focus && s.traditions.includes(trad) && (rank === 0 ? s.cantrip : !s.cantrip && s.rank <= rank));
     const have = new Set([...c.spells.cantrips, ...Object.values(c.spells.known).flat()]);
     openPicker(rank === 0 ? "Choose a cantrip" : `Choose a spell for rank ${rank}`, list, {
@@ -392,7 +420,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
 // ------------------------------------------------------------------
 // Generic searchable picker modal
 // ------------------------------------------------------------------
-export function openPicker(title, items, { meta, warn, taken, onPick }) {
+export function openPicker(title, items, { meta, warn, taken, onPick, search }) {
   const q = h("input", { placeholder: "Search name, trait or text…", autofocus: true });
   let rarity = "common";
   const list = h("div", { class: "picker-list" });
@@ -401,7 +429,7 @@ export function openPicker(title, items, { meta, warn, taken, onPick }) {
     const term = q.value.toLowerCase().trim();
     const shown = items.filter((it) =>
       (rarity === "all" || (it.rarity || "common") === "common") &&
-      (!term || it.name.toLowerCase().includes(term) || (it.traits || []).some((t) => t.includes(term)) || (term.length > 3 && (it.desc || "").toLowerCase().includes(term))));
+      (!term || it.name.toLowerCase().includes(term) || (it.traits || []).some((t) => t.includes(term)) || (search && search(it).toLowerCase().includes(term)) || (term.length > 3 && (it.desc || "").toLowerCase().includes(term))));
     if (!shown.length) list.append(h("p", { class: "muted" }, "Nothing matches."));
     for (const it of shown.slice(0, 250)) {
       const w = warn ? warn(it) : null;

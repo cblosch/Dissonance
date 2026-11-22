@@ -1,5 +1,5 @@
 import { load, coreData } from "./data.js";
-import { ATTRS, SKILLS, computeCharacter, featSlotsFor, traditionFor, FULL_CASTERS, spellSlots, freeSkillCount, creatureXP } from "./shared/rules.js";
+import { ATTRS, SKILLS, computeCharacter, featSlotsFor, traditionFor, FULL_CASTERS, spellSlots, freeSkillCount, creatureXP, keyOptions, needsTraditionChoice } from "./shared/rules.js";
 import { blankCharacter } from "./builder.js";
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -66,9 +66,11 @@ export async function autoBuild({ level = 1, className = null, name = null } = {
   const bg = pick(bgs);
   c.background = bg.name;
   if (k.subclasses?.length) c.subclass = pick(k.subclasses).name;
-  const prio = PRIORITY[k.name];
-  const key = k.keyAttribute.length > 1 ? prio[0] : k.keyAttribute[0];
-  c.keyAttribute = k.keyAttribute.length > 1 ? key : "";
+  const prio = PRIORITY[k.name] || [...new Set([...keyOptions(k), "con", "dex", "wis", "str"])].slice(0, 4);
+  const opts = keyOptions(k);
+  const key = opts.length > 1 ? (opts.includes(prio[0]) ? prio[0] : opts[0]) : opts[0];
+  c.keyAttribute = opts.length > 1 ? key : "";
+  if (needsTraditionChoice(c, k)) c.choices.tradition = pick(["arcane", "divine", "occult", "primal"]);
   const order = [key, ...prio.filter((x) => x !== key), ...ATTRS.filter((x) => x !== key && !prio.includes(x))];
   // ancestry boosts
   const taken = [];
@@ -99,16 +101,26 @@ export async function autoBuild({ level = 1, className = null, name = null } = {
   // skills
   const fixed = new Set([...k.trainedSkills, ...bg.skills, ...(c.deitySkill ? [c.deitySkill] : [])]);
   const want = freeSkillCount(c, data);
-  const prefs = [...SKILL_PREF[k.name], ...shuffle(Object.keys(SKILLS))].filter((s, i, arr) => arr.indexOf(s) === i && !fixed.has(s));
+  const prefs = [...(SKILL_PREF[k.name] || []), ...shuffle(Object.keys(SKILLS))].filter((s, i, arr) => arr.indexOf(s) === i && !fixed.has(s));
   c.skills.trained = prefs.slice(0, want);
   const incSkills = [...fixed, ...c.skills.trained];
   k.skillIncreaseLevels.filter((l) => l <= level).forEach((l, i) => { c.skills.increases[l] = incSkills[i % Math.min(3, incSkills.length)]; });
 
-  // feats: prefer ones without prerequisites
+  // feats: ones with no prerequisites, or whose prerequisites are skill ranks (or feats) this build has
   const used = new Set();
-  const ancTrait = a.name.toLowerCase();
-  for (const slot of featSlotsFor(c, k)) {
-    const pool = feats.filter((f) => f.level <= slot.level && f.rarity === "common" && !f.prereq.length && !used.has(f.name) && (
+  const ancTrait = a.trait || a.name.toLowerCase();
+  const ranks = computeCharacter(c, data).skillRank;
+  const RANKS = ["untrained", "trained", "expert", "master", "legendary"];
+  const meets = (f) => f.prereq.every((p) => {
+    const m = String(p || "").toLowerCase().match(/^(trained|expert|master|legendary) in (\w+)$/);
+    if (m && m[2] in ranks) return ranks[m[2]] >= RANKS.indexOf(m[1]);
+    return used.has(p); // a prerequisite feat we've already taken
+  });
+  // two passes: feats like Natural Ambition add slots of their own
+  for (const slot of [...featSlotsFor(c, k), ...featSlotsFor({ ...c, feats: { ...c.feats, "ancestry-1": "Natural Ambition" } }, k).filter((x) => x.key.startsWith("bonus"))]) {
+    if (c.feats[slot.key]) continue;
+    if (slot.key.startsWith("bonus") && !featSlotsFor(c, k).some((x) => x.key === slot.key)) continue;
+    const pool = feats.filter((f) => f.level <= slot.level && f.rarity === "common" && !used.has(f.name) && meets(f) && (
       slot.kind === "ancestry" ? f.category === "ancestry" && f.traits.includes(ancTrait)
       : slot.kind === "class" ? f.category === "class" && f.traits.includes(k.name.toLowerCase())
       : slot.kind === "skill" ? f.category === "skill"
@@ -118,14 +130,18 @@ export async function autoBuild({ level = 1, className = null, name = null } = {
     const f = pick(best.length ? best : pool);
     if (f) { c.feats[slot.key] = f.name; used.add(f.name); }
   }
-  if (k.name === "Fighter" || k.name === "Champion") {
+  // choices that feats or the heritage add: Skilled Human's skill, Natural Skill's two extra skills
+  if (c.heritage === "Skilled Human") c.skills.heritage = prefs.find((x) => !c.skills.trained.includes(x)) || "stealth";
+  const want2 = freeSkillCount(c, data);
+  for (const x of prefs) { if (c.skills.trained.length >= want2) break; if (!c.skills.trained.includes(x) && x !== c.skills.heritage) c.skills.trained.push(x); }
+    if (k.name === "Fighter" || k.name === "Champion") {
     const tough = feats.find((f) => f.name === "Toughness");
     if (tough && c.feats["general-3"] && level >= 3) c.feats["general-3"] = "Toughness";
   }
 
   // spells
   if (FULL_CASTERS.includes(k.name)) {
-    const trad = traditionFor(c);
+    const trad = traditionFor(c, k);
     const list = spells.filter((s) => !s.focus && s.rarity === "common" && s.traditions.includes(trad));
     c.spells.cantrips = shuffle(list.filter((s) => s.cantrip)).slice(0, 5).map((s) => s.name);
     const prefer = ["Heal", "Force Barrage", "Fear", "Bless", "Soothe", "Command", "Breathe Fire", "Fireball", "Slow", "Haste", "Electric Arc"];
@@ -137,7 +153,7 @@ export async function autoBuild({ level = 1, className = null, name = null } = {
   }
 
   // equipment
-  const kit = KIT[k.name];
+  const kit = KIT[k.name] || genericKit(k, key, data);
   c.equipment.armor = kit.armor;
   c.equipment.shield = kit.shield || "";
   c.equipment.weapons = kit.weapons.filter((w) => data.weapons.some((x) => x.name === w)).map((w) => ({ name: w, potency: 0, striking: 0 }));
@@ -207,3 +223,15 @@ export function suggestTurn(char, state, data) {
 }
 
 export { creatureXP };
+
+// Starting gear for classes without a hand-picked kit: armor and weapons the class is trained in.
+function genericKit(k, key, data) {
+  const d = k.defenses, at = k.attacks;
+  const armor = d.heavy || d.medium ? "Hide Armor" : d.light ? (key === "dex" ? "Studded Leather Armor" : "Leather Armor") : "";
+  const has = (n) => data.weapons.some((w) => w.name === n);
+  let weapons;
+  if (at.martial) weapons = key === "dex" ? ["Rapier", "Shortbow"] : ["Longsword", "Javelin"];
+  else weapons = key === "dex" ? ["Dagger", "Sling"] : ["Spear", "Crossbow"];
+  if (k.name === "Gunslinger" && has("Flintlock Musket")) weapons = ["Flintlock Musket", "Dagger"];
+  return { armor, weapons: weapons.filter(has), shield: d.heavy || k.features.some((f) => f.name === "Shield Block" && f.level === 1) ? "Steel Shield" : "" };
+}

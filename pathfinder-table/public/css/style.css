@@ -425,3 +425,6 @@ body.print-handout { background: #fff; padding: 2em; }
 .table-tools { margin-bottom: .4em; }
 .story textarea { margin-bottom: .4em; }
 .story .row input { flex: 1; min-width: 10em; }
+.picker-btn { width: 100%; white-space: normal; text-align: left; justify-content: flex-start; min-height: 2.6em; }
+.picker-btn > span { display: flex; flex-direction: column; gap: .1em; min-width: 0; }
+.picker-btn.empty { border-style: dashed; color: var(--muted); }

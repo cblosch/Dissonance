@@ -16,17 +16,9 @@ import os
 import re
 import sys
 
-CORE_BOOKS = {
-    "Pathfinder Player Core",
-    "Pathfinder Player Core 2",
-    "Pathfinder GM Core",
-}
+CORE_BOOKS = None  # None = every Remaster book
 MONSTER_BOOKS = {"Pathfinder Monster Core", "Pathfinder Monster Core 2", "Pathfinder NPC Core"}
-PLAYER_CLASSES = {
-    "alchemist", "barbarian", "bard", "champion", "cleric", "druid", "fighter",
-    "investigator", "monk", "oracle", "ranger", "rogue", "sorcerer",
-    "swashbuckler", "witch", "wizard",
-}
+PLAYER_CLASSES = None  # every Remaster class
 OUT = os.path.join(os.path.dirname(__file__), "..", "public", "data")
 
 
@@ -51,7 +43,7 @@ def pub(d):
 
 def is_core(d, books=CORE_BOOKS):
     p = pub(d)
-    return bool(p.get("remaster")) and p.get("title") in books
+    return bool(p.get("remaster")) and (books is None or p.get("title") in books)
 
 
 SAVE = {"fortitude": "Fortitude", "reflex": "Reflex", "will": "Will"}
@@ -137,6 +129,78 @@ def write(name, data):
     print(f"{name}: {len(data)} entries, {os.path.getsize(p)//1024} KB")
 
 
+STAT_WORDS = [
+    ("perception", r"\bperception\b"), ("fortitude", r"\bfortitude\b"), ("reflex", r"\breflex\b"), ("will", r"\bwill saves?\b"),
+    ("simple", r"simple(?: and martial)? weapons|simple weapons"), ("martial", r"martial weapons"), ("advanced", r"advanced weapons"), ("unarmed", r"unarmed attacks"),
+    ("unarmored", r"unarmored defense"), ("light", r"\blight(?: armor|,| and)"), ("medium", r"\bmedium(?: armor|,| and)"), ("heavy", r"\bheavy armor"),
+    ("classDC", r"class dc"), ("spell", r"spell (?:attack|dc)"),
+]
+RANK = {"trained": 1, "expert": 2, "master": 3, "legendary": 4}
+PROF_PATTERNS = [
+    r"proficiency ranks? (?:for|in|with) (?P<what>.{3,200}?) (?:increases?|increase) to (?P<rank>trained|expert|master|legendary)",
+    r"your proficiency ranks? increases? to (?P<rank>trained|expert|master|legendary) (?:for|in|with) (?P<what>.{3,200}?)[.;]",
+    r"you gain (?P<rank>expert|master|legendary) proficiency (?:in|with) (?P<what>.{3,200}?)[.;]",
+]
+SKIP_WHAT = re.compile(r"chosen|that group|favored weapon|in the group|one weapon group|your choice|of your choice|selected|apparition|ikon|kinetic|innovation", re.I)
+
+
+def extract_progression(class_doc, features_by_name):
+    """Proficiency increases by level, read from each class feature's text.
+    Picks the variant of a shared feature (e.g. Weapon Expertise) whose traits name the class."""
+    cname = class_doc["name"].lower()
+    inc, ws, gws = {}, None, None
+    missing = []
+    for it in sorted(class_doc["system"]["items"].values(), key=lambda x: x["level"]):
+        if "Weapon Specialization" in it["name"] and not it["name"].startswith("Greater") and "Eidolon" not in it["name"]:
+            ws = ws or it["level"]
+        if it["name"].startswith("Greater Weapon Specialization"):
+            gws = it["level"]
+        variants = features_by_name.get(it["name"], [])
+        if not variants:
+            missing.append(f'{it["level"]} {it["name"]}')
+            continue
+        mine = [v for v in variants if cname in v["system"].get("traits", {}).get("value", [])]
+        f = (mine or variants)[0]
+        text = class_section(f["system"]["description"]["value"], cname)
+        for pat in PROF_PATTERNS:
+            for m in re.finditer(pat, text):
+                what = m.group("what")
+                if SKIP_WHAT.search(what):
+                    continue
+                if re.search(r"all (?:saving throws|saves)", what):
+                    stats = ["fortitude", "reflex", "will"]
+                else:
+                    stats = [k for k, rx in STAT_WORDS if re.search(rx, what)]
+                    if re.search(r"\b" + cname + r"(?: class)? dc", what) and "classDC" not in stats:
+                        stats.append("classDC")
+                for st in stats:
+                    inc.setdefault(str(it["level"]), {})[st] = max(inc.get(str(it["level"]), {}).get(st, 0), RANK[m.group("rank")])
+    return {"inc": {lvl: sorted(v.items()) for lvl, v in inc.items()}, "ws": ws, "gws": gws, "unread": missing}
+
+
+def tradition_of(html):
+    found = set(re.findall(r"\b(arcane|divine|occult|primal)\b", re.sub(r"<[^>]+>", " ", html or "").lower()))
+    return found.pop() if len(found) == 1 else None
+
+
+def class_section(html, cname):
+    """Shared class features list one section per class ("<p><strong>Druid, Kineticist</strong> ...").
+    Return only the text that applies to this class (or everything, if not split by class)."""
+    def names_of(m):
+        return [x.strip().lower() for x in re.split(r",|\band\b", m.group(1)) if x.strip()]
+    heads = [m for m in re.finditer(r"<p>\s*<strong>([^<]+)</strong>", html)
+             if all(re.fullmatch(r"[a-z' ]{3,20}", n) for n in names_of(m))]
+    if len(heads) >= 2:
+        keep = []
+        for i, m in enumerate(heads):
+            end = heads[i + 1].start() if i + 1 < len(heads) else len(html)
+            if cname in names_of(m):
+                keep.append(html[m.start():end])
+        if keep:
+            html = " ".join(keep)
+    return re.sub(r"<[^>]+>", " ", clean(html)).lower()
+
+
 def main(root):
     # ---------- ancestries + heritages ----------
     anc = [d for d in load_all(f"{root}/ancestries/*.json") if is_core(d)]
@@ -144,26 +208,26 @@ def main(root):
     anc_out = []
     for d in sorted(anc, key=lambda x: x["name"]):
         s = d["system"]
-        slug = d["name"].lower()
+        slug = d["name"].lower().replace(" ", "-").replace("'", "")
         hs = [h for h in heritages
-              if (h["system"].get("ancestry") or {}).get("slug") == slug and pub(h).get("title") in CORE_BOOKS]
+              if (h["system"].get("ancestry") or {}).get("slug") == slug and pub(h).get("remaster")]
         anc_out.append({
             "name": d["name"], "hp": s["hp"], "size": s["size"], "speed": s["speed"],
             "boosts": boosts(s.get("boosts")), "flaws": boosts(s.get("flaws")),
             "languages": s["languages"]["value"], "extraLanguages": s["additionalLanguages"]["value"],
-            "vision": s.get("vision", "normal"), "traits": traits(d), "rarity": rarity(d),
+            "vision": s.get("vision", "normal"), "traits": traits(d), "rarity": rarity(d), "trait": slug,
             "source": pub(d)["title"], "desc": clean(s["description"]["value"], 900),
             "heritages": [{"name": h["name"], "desc": clean(h["system"]["description"]["value"], 600)}
                           for h in sorted(hs, key=lambda x: x["name"])],
         })
     # versatile heritages from the core books (e.g. Changeling, Nephilim)
-    versatile = [h for h in heritages if not h["system"].get("ancestry") and pub(h).get("title") in CORE_BOOKS]
+    versatile = [h for h in heritages if not h["system"].get("ancestry") and pub(h).get("remaster")]
     write("ancestries", anc_out)
     write("versatile-heritages", [{"name": h["name"], "desc": clean(h["system"]["description"]["value"], 600)}
                                   for h in sorted(versatile, key=lambda x: x["name"])])
 
     # ---------- backgrounds ----------
-    bgs = [d for d in load_all(f"{root}/backgrounds/*.json") if is_core(d)]
+    bgs = [d for d in load_all(f"{root}/backgrounds/**/*.json") if is_core(d)]
     feat_names = {}
     for f in load_all(f"{root}/feats/**/*.json"):
         feat_names[f["name"]] = f
@@ -181,20 +245,27 @@ def main(root):
     write("backgrounds", bg_out)
 
     # ---------- classes ----------
-    cls = [d for d in load_all(f"{root}/classes/*.json") if d["name"].lower() in PLAYER_CLASSES]
+    cls = [d for d in load_all(f"{root}/classes/*.json") if pub(d).get("remaster")]
     feats_cf = [d for d in load_all(f"{root}/class-features/**/*.json") if is_core(d)]
+    cf_by_name = {}
+    for f in feats_cf:
+        cf_by_name.setdefault(f["name"], []).append(f)
     sub_tags = {
         "alchemist": "alchemist-research-field", "barbarian": "barbarian-instinct", "bard": "bard-muse",
         "champion": "champion-cause", "cleric": "cleric-doctrine", "druid": "druid-order",
         "investigator": "investigator-methodology", "oracle": "oracle-mystery",
         "ranger": "ranger-hunters-edge", "rogue": "rogue-racket", "sorcerer": "sorcerer-bloodline",
         "swashbuckler": "swashbuckler-style", "witch": "witch-patron", "wizard": "wizard-arcane-school",
+        "animist": "animistic-practice", "gunslinger": "gunslinger-way", "inventor": "inventor-innovation",
+        "kineticist": "kineticist-kinetic-gate", "magus": "magus-hybrid-study", "necromancer": "necromancer-grim-fascination",
+        "psychic": "psychic-conscious-mind", "summoner": "summoner-eidolon", "thaumaturge": "thaumaturge-implement",
+        "exemplar": "exemplar-ikon",
     }
     cls_out = []
     for d in sorted(cls, key=lambda x: x["name"]):
         s = d["system"]
         tag = sub_tags.get(d["name"].lower())
-        subs = sorted([{"name": f["name"], "desc": clean(f["system"]["description"]["value"], 700)}
+        subs = sorted([{"name": f["name"], "desc": clean(f["system"]["description"]["value"], 700), "tradition": tradition_of(f["system"]["description"]["value"])}
                        for f in feats_cf if tag and tag in f["system"].get("traits", {}).get("otherTags", [])],
                       key=lambda x: x["name"])
         cls_out.append({
@@ -211,6 +282,7 @@ def main(root):
             "skillIncreaseLevels": s["skillIncreaseLevels"]["value"],
             "features": sorted([{"name": i["name"], "level": i["level"]} for i in s["items"].values()],
                                key=lambda x: (x["level"], x["name"])),
+            "progression": extract_progression(d, cf_by_name),
             "subclassLabel": (tag or "").split("-", 1)[-1].replace("-", " ").replace("hunters", "hunter's"),
             "subclasses": subs,
             "source": pub(d)["title"], "desc": clean(s["description"]["value"], 1200),

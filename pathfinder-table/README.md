@@ -93,7 +93,9 @@ Build characters from the start screen before you have a game. They're kept per 
 - **Initiative tracker** with hidden entries, HP and conditions. Players see enemies' state ("wounded", "bloodied") but not exact HP or AC.
 
 ### Character builder (Player Core and Player Core 2)
-- 16 ancestries with heritages (plus versatile heritages), 63 backgrounds and the 16 Player Core / Player Core 2 classes with their subclass choices (muses, doctrines, rackets, bloodlines, patrons, arcane schools and so on).
+- Every Remaster class (29, from Player Core 1 and 2, Impossible Magic, Battlecry!, Guns & Gears, War of Immortals, Dark Archive Remastered and Rage of Elements), 38 ancestries with heritages plus versatile heritages, and 269 backgrounds, each labelled with its book. Subclass choices (muses, doctrines, rackets, bloodlines, patrons, eidolons, hybrid studies, kinetic gates and so on) are included, and spellcasting traditions come from the subclass where it decides them.
+- Backgrounds are chosen from a searchable list that shows each one's attribute boosts, trained skills and lore, and skill feat; search by skill ("diplomacy") to find backgrounds that train it.
+- Heritage and feat grants are handled: Versatile Human's general feat, Skilled Human's skill (expert at 5th), Natural Ambition's class feat, General Training's general feat, Natural Skill's two skills.
 - Levels 1-20: ancestry boosts (including the alternate two-free-boost option), background, class key attribute, free boosts and level 5/10/15/20 boosts with partial boosts above +4; trained skills and skill increases with rank limits; ancestry, class, skill and general feat slots by level with prerequisite hints; spell selection by tradition with default slot counts; armor, shields, weapons with fundamental runes, and gear.
 - Live stat calculation (HP, AC, saves, Perception, skills with armor check penalties, strikes with multiple attack penalties and weapon specialization, class DC, spell attack and DC) and a checklist of unfinished choices. A **random build** button makes a complete character.
 - The character sheet tracks HP, temp HP, hero points, dying/wounded, conditions and spell slots, and every number is clickable to roll. Rolls happen on the server so everyone sees the same result, with optional DCs (showing the degree of success) and secret/private rolls.
@@ -104,7 +106,7 @@ Build characters from the start screen before you have a game. They're kept per 
 
 ## Where the rules data comes from
 
-The bundled data in `public/data/` was extracted from the [Foundry VTT pf2e system](https://github.com/foundryvtt/pf2e), which publishes Paizo's rules text under the ORC license. Only Remaster content is included (Player Core, Player Core 2, GM Core, Monster Core, Monster Core 2, NPC Core). To rebuild it from a newer checkout:
+The bundled data in `public/data/` was extracted from the [Foundry VTT pf2e system](https://github.com/foundryvtt/pf2e), which publishes Paizo's rules text under the ORC license. Only Remaster content is included, from every Remaster book in the dataset (the bestiary is limited to Monster Core, Monster Core 2 and NPC Core). To rebuild it from a newer checkout:
 
 ```bash
 git clone --depth 1 --filter=blob:none --sparse https://github.com/foundryvtt/pf2e.git
@@ -112,7 +114,7 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/foundryvtt/pf
 python3 tools/build_data.py pf2e/packs/pf2e
 ```
 
-Class proficiency progressions (when saves, Perception, weapons, armor and spellcasting go up) are in `public/js/shared/rules.js`. They were read from each class feature's text in that data. Default spell-slot counts and the GM Core tables (DCs by level, encounter budgets, treasure by level) are entered by hand there too, and are worth spot-checking against Archives of Nethys.
+Class proficiency progressions (when saves, Perception, weapons, armor and spellcasting go up): for the 16 Player Core classes they are hand-checked tables in `public/js/shared/rules.js`; for the other 13 they are extracted from each class feature's text by `tools/build_data.py`. That extractor reproduces the hand-checked tables exactly for 13 of the 16 classes (the other three differ only where a feature is missing from the dataset), so treat the newer classes' numbers as very likely right but worth checking. Spell slots past 1st level for Animist, Magus, Necromancer, Psychic and Summoner aren't in the data; the builder marks them as estimates to set from the class table. Default spell-slot counts and the GM Core tables (DCs by level, encounter budgets, treasure by level) are entered by hand there too, and are worth spot-checking against Archives of Nethys.
 
 Pathfinder is a trademark of Paizo Inc. This project is not affiliated with Paizo or Archives of Nethys.
 
