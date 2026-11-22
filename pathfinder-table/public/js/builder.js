@@ -1,9 +1,9 @@
-import { h, clear, cap, signed, field, select, modal, richText, toast, confirmDialog, groupedSelect, classGroups } from "./ui.js";
+import { h, clear, cap, signed, field, select, modal, richText, toast, confirmDialog, groupedSelect, classGroups, ancestryGroups } from "./ui.js";
 import { load, coreData } from "./data.js";
 import {
   ATTRS, ATTR_NAMES, SKILLS, RANKS, AON, computeCharacter, validateCharacter, freeSkillCount,
   featSlotsFor, traditionFor, FULL_CASTERS, SPONTANEOUS, keyOptions, needsTraditionChoice, ESTIMATED_SLOTS, progressionFor,
-  CUSTOM_HERITAGE, CUSTOM_BENEFITS, heritageName,
+  CUSTOM_HERITAGE, heritageName, heritageFeatTraits,
 } from "./shared/rules.js";
 import { autoBuild } from "./companions.js";
 
@@ -86,22 +86,27 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
     sec.append(h("div", { class: "grid2" },
       field("Name", name),
       field("Level", select(Array.from({ length: 20 }, (_, i) => i + 1), c.level, (v) => set("level", +v))),
-      field("Ancestry", select([{ value: "", label: "— choose —" }, ...data.ancestries.map((x) => ({ value: x.name, label: `${x.name}${x.source.includes("Player Core") ? "" : " · " + shortSource(x.source)}` }))], c.ancestry, (v) => { c.heritage = ""; c.boosts.ancestry = []; set("ancestry", v); })),
+      field("Ancestry", groupedSelect(ancestryGroups(data.ancestries), c.ancestry, (v) => { c.heritage = ""; c.boosts.ancestry = []; set("ancestry", v); }, { first: { value: "", label: "— choose —" } })),
       field("Heritage", select([{ value: "", label: a ? "— choose —" : "pick an ancestry first" }, ...heritages.map((x) => ({ value: x.name, label: x.name + (x.versatile ? " (versatile)" : "") })), ...(a ? [{ value: CUSTOM_HERITAGE, label: "Custom heritage…" }] : [])], c.heritage, (v) => set("heritage", v))),
       field("Background", h("button", { class: `picker-btn ${c.background ? "" : "empty"}`, onclick: () => pickBackground() },
         c.background ? h("span", {}, h("strong", {}, c.background), h("small", { class: "muted" }, bgSummary(background()))) : "Choose a background…")),
       field("Class", groupedSelect(classGroups(data.classes), c.class, (v) => { c.subclass = ""; c.keyAttribute = ""; c.feats = Object.fromEntries(Object.entries(c.feats).filter(([key]) => !key.startsWith("class"))); c.spells = { cantrips: [], known: {}, slotOverrides: {} }; set("class", v); }, { first: { value: "", label: "— choose —" } })),
     ));
     if (c.heritage === CUSTOM_HERITAGE) {
-      c.customHeritage ||= { name: "", desc: "", benefit: "flavor" };
+      c.customHeritage ||= { ancestry: "", vision: false, name: "", desc: "" };
       const ch = c.customHeritage;
-      sec.append(h("div", { class: "bsec custom-heritage" },
+      const others = data.ancestries.filter((x) => x.name !== c.ancestry);
+      const other = data.ancestries.find((x) => x.name === ch.ancestry);
+      const vis = (v) => (v || "normal").replace(/-/g, " ");
+      sec.append(h("div", { class: "custom-heritage" },
         h("h4", {}, "Custom heritage"),
-        h("p", { class: "hint" }, "Agree on custom heritages with your table. Pick the benefit closest to what you have in mind; the description is for everyone to read."),
+        h("p", { class: "hint" }, "You're descended from a second ancestry. You can take its ancestry feats (as with Adopted Ancestry), and if your table agrees, gain its special vision."),
         h("div", { class: "grid2" },
-          field("Heritage name", h("input", { id: "ch-name", value: ch.name, placeholder: `e.g. Stormborn ${a?.name || ""}`.trim(), oninput: (e) => { ch.name = e.target.value; summary(); } })),
-          field("Rules benefit", select(Object.entries(CUSTOM_BENEFITS).map(([value, label]) => ({ value, label })), ch.benefit, (v) => { ch.benefit = v; render(); }))),
-        field("Description", h("textarea", { id: "ch-desc", rows: 3, value: ch.desc, placeholder: "Where it comes from and how it shows", oninput: (e) => { ch.desc = e.target.value; } }))));
+          field("Second ancestry", groupedSelect(ancestryGroups(others), ch.ancestry, (v) => { ch.ancestry = v; render(); }, { first: { value: "", label: "— choose —" }, id: "ch-ancestry" })),
+          field("Heritage name (optional)", h("input", { id: "ch-name", value: ch.name, placeholder: ch.ancestry ? `${ch.ancestry}-blooded` : "e.g. Dwarf-blooded", oninput: (e) => { ch.name = e.target.value; summary(); } }))),
+        other ? h("label", { class: "check" }, h("input", { type: "checkbox", id: "ch-vision", checked: ch.vision, disabled: (other.vision || "normal") === "normal" ? "disabled" : null, onchange: (e) => { ch.vision = e.target.checked; render(); } }),
+          (other.vision || "normal") === "normal" ? ` ${other.name} has no special vision to inherit` : ` Gain ${other.name} ${vis(other.vision)} (ask your GM)`) : null,
+        field("Description (optional)", h("textarea", { id: "ch-desc", rows: 2, value: ch.desc, placeholder: "How the bloodline shows", oninput: (e) => { ch.desc = e.target.value; } }))));
     }
     if (k?.subclasses?.length) {
       sec.append(field(cap(k.subclassLabel), select([{ value: "", label: "— choose —" }, ...k.subclasses.map((s) => s.name)], c.subclass, (v) => set("subclass", v))));
@@ -144,7 +149,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
   function deityPicker() {
     const wrap = h("div", { class: "grid2" });
     load("deities").then((deities) => {
-      const sel = select([{ value: "", label: "— choose deity —" }, ...deities.map((d) => ({ value: d.name, label: `${d.name} (${d.source})` }))], c.deity, (v) => {
+      const sel = select([{ value: "", label: "— choose deity —" }, ...deities.map((d) => ({ value: d.name, label: d.name }))], c.deity, (v) => {
         const d = deities.find((x) => x.name === v);
         c.deity = v;
         c.deitySkill = d?.skill?.[0] || "";
@@ -167,8 +172,8 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
 
   function pickBackground() {
     openPicker("Choose a background", data.backgrounds, {
-      meta: (b) => `${bgSummary(b)} · ${shortSource(b.source)}`,
-      search: (b) => `${bgSummary(b)} ${b.source}`,
+      meta: (b) => bgSummary(b),
+      search: (b) => bgSummary(b),
       onPick: (b) => { c.boosts.background = []; set("background", b.name); },
     });
   }
@@ -246,7 +251,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
       }
       sec.append(grid);
     }
-    if (c.heritage === "Skilled Human" || (c.heritage === CUSTOM_HERITAGE && c.customHeritage?.benefit === "skill")) {
+    if (c.heritage === "Skilled Human") {
       sec.append(field(`${heritageName(c)} skill (expert at 5th level)`, select([{ value: "", label: "— choose —" }, ...Object.keys(SKILLS).map((s) => ({ value: s, label: cap(s) }))], c.skills.heritage || "", (v) => set("skills.heritage", v))));
     }
     const lore = h("input", { value: (c.skills.lore || []).join(", "), placeholder: "e.g. Tavern Lore", onchange: (e) => set("skills.lore", e.target.value.split(",").map((x) => x.trim()).filter(Boolean)) });
@@ -277,7 +282,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
     const all = await load("feats");
     const a = ancestry();
     const her = c.heritage ? data.versatileHeritages.find((v) => v.name === c.heritage) : null;
-    const ancTraits = [a?.trait || a?.name.toLowerCase(), her?.name.toLowerCase().replace(/ /g, "-")].filter(Boolean);
+    const ancTraits = [a?.trait || a?.name.toLowerCase(), her?.name.toLowerCase().replace(/ /g, "-"), ...heritageFeatTraits(c, data)].filter(Boolean);
     const chosen = new Set(Object.values(c.feats));
     const eligible = all.filter((f) => {
       if (f.level > slot.level) return false;

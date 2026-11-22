@@ -165,16 +165,23 @@ export function needsTraditionChoice(char, classData) {
 }
 
 // Key attribute options (Psychic's data leaves it open: Intelligence or Charisma)
-// Custom heritages: a name and description, plus an optional benefit modelled on core heritages
+// Custom heritage: descended from a second, existing ancestry. Like Adopted Ancestry, you can take
+// that ancestry's ancestry feats; optionally (if your table allows) you also get its special vision.
 export const CUSTOM_HERITAGE = "Custom";
-export const CUSTOM_BENEFITS = {
-  flavor: "Story only (no rules change)",
-  feat: "A 1st-level general feat (like Versatile Human)",
-  skill: "Trained in a skill, expert at 5th level (like Skilled Human)",
+export const heritageName = (char) => {
+  if (char.heritage !== CUSTOM_HERITAGE) return char.heritage;
+  const ch = char.customHeritage || {};
+  return ch.name || (ch.ancestry ? `${ch.ancestry}-blooded` : "Custom heritage");
 };
-export const heritageName = (char) => (char.heritage === CUSTOM_HERITAGE ? char.customHeritage?.name || "Custom heritage" : char.heritage);
-const grantsHeritageSkill = (char) => char.heritage === "Skilled Human" || (char.heritage === CUSTOM_HERITAGE && char.customHeritage?.benefit === "skill");
-const grantsHeritageFeat = (char) => char.heritage === "Versatile Human" || (char.heritage === CUSTOM_HERITAGE && char.customHeritage?.benefit === "feat");
+// Extra ancestry traits a character's heritage lets them take feats from
+export function heritageFeatTraits(char, data) {
+  if (char.heritage !== CUSTOM_HERITAGE || !char.customHeritage?.ancestry) return [];
+  const a = data.ancestries.find((x) => x.name === char.customHeritage.ancestry);
+  return a ? [a.trait || a.name.toLowerCase()] : [];
+}
+const VISION_RANK = { normal: 0, "low-light-vision": 1, darkvision: 2, "greater-darkvision": 3 };
+const grantsHeritageSkill = (char) => char.heritage === "Skilled Human";
+const grantsHeritageFeat = (char) => char.heritage === "Versatile Human";
 
 export const keyOptions = (classData) => (classData.keyAttribute.length ? classData.keyAttribute : ["int", "cha"]);
 
@@ -387,7 +394,14 @@ export function computeCharacter(char, data) {
     spellAttack, spellDC: spellAttack !== null ? 10 + spellAttack : null, spellAttr,
     tradition: traditionFor(char, classData),
     speed: (ancestry?.speed || 25) + speedPenalty,
-    size: ancestry?.size, vision: ancestry?.vision,
+    size: ancestry?.size, vision: (() => {
+      let v = ancestry?.vision || "normal";
+      if (char.heritage === CUSTOM_HERITAGE && char.customHeritage?.vision) {
+        const other = data.ancestries.find((x) => x.name === char.customHeritage.ancestry)?.vision || "normal";
+        if ((VISION_RANK[other] || 0) > (VISION_RANK[v] || 0)) v = other;
+      }
+      return v;
+    })(),
     armor, armorCat, checkPenalty, bulkLimit,
     languages: [...(ancestry?.languages || []), ...(char.languages || [])],
     slots: { ...spellSlots(char.class, level), ...(char.spells?.slotOverrides || {}) },
@@ -419,7 +433,7 @@ export function validateCharacter(char, data) {
   if (classData && keyOptions(classData).length > 1 && !char.keyAttribute) issues.push("Choose a key attribute.");
   if (classData && needsTraditionChoice(char, classData) && !char.choices?.tradition) issues.push("Choose your spellcasting tradition.");
   if (grantsHeritageSkill(char) && !char.skills?.heritage) issues.push(`Choose your ${heritageName(char)} skill.`);
-  if (char.heritage === CUSTOM_HERITAGE && !char.customHeritage?.name) issues.push("Name your custom heritage.");
+  if (char.heritage === CUSTOM_HERITAGE && !char.customHeritage?.ancestry) issues.push("Choose the ancestry your custom heritage comes from.");
   const b = char.boosts || {};
   const dupe = (arr) => arr && new Set(arr.filter(Boolean)).size !== arr.filter(Boolean).length;
   if ((b.free || []).filter(Boolean).length < 4) issues.push("Pick all four free attribute boosts.");

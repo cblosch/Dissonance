@@ -159,7 +159,7 @@ export async function showSpell(name) {
   modal(name, h("div", {},
     h("p", { class: "muted" }, `${s.cantrip ? "Cantrip" : s.focus ? "Focus " + s.rank : "Spell " + s.rank} · ${s.traits.join(", ")}`),
     h("p", {}, [s.time && `Cast ${actionText(s.time)}`, s.range && `Range ${s.range}`, s.area && `Area ${s.area}`, s.target && `Targets ${s.target}`, s.save && `Defense ${cap(s.save)}`, s.duration && `Duration ${s.duration}`].filter(Boolean).join(" · ")),
-    richText(s.desc), h("p", { class: "muted" }, `Source: ${s.source} `, aon(name))));
+    richText(s.desc), h("p", { class: "muted" }, aon(name))));
 }
 export async function showFeat(name) {
   const all = await load("feats");
@@ -168,5 +168,5 @@ export async function showFeat(name) {
   modal(name, h("div", {},
     h("p", { class: "muted" }, `Feat ${f.level} ${f.actions ? "· " + actionText(f.actions) : ""} · ${f.traits.join(", ")}`),
     f.prereq.length ? h("p", {}, h("strong", {}, "Prerequisites "), f.prereq.join("; ")) : null,
-    richText(f.desc), h("p", { class: "muted" }, `Source: ${f.source} `, aon(name))));
+    richText(f.desc), h("p", { class: "muted" }, aon(name))));
 }

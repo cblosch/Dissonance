@@ -39,7 +39,7 @@ It uses `claude-opus-5-5` by default (`PF_TABLE_MODEL` overrides it). Players ne
 
 ## Look and feel
 
-A matte, sepia storybook: flat paper with a faint grain, sepia inks and torn page edges, with a darker candlelit version at night. No gloss or soft shadows; the map and emoji icons are toned sepia to match. The page starts in your device's light or dark setting; the switch in the top bar flips between light and dark and remembers your choice on that device. Type is IM Fell English for headings and Crimson Pro for text (Google Fonts, with Georgia and Palatino as fallbacks).
+An old journal: the page is aged, matte paper with tea stains, foxing and darkened edges, and each section is a journal entry with a faded red margin rule. Sepia inks throughout; the map and emoji icons are toned to match. The page starts in your device's light or dark setting; the switch in the top bar flips between light and dark and remembers your choice on that device. Type is IM Fell English for headings and Crimson Pro for text (Google Fonts, with Georgia and Palatino as fallbacks). Book sources aren't shown in the interface; every entry links to Archives of Nethys instead.
 
 ## Leaving and removing games
 
@@ -103,9 +103,9 @@ Build characters from the start screen before you have a game. They're kept per 
 - **Initiative tracker** with hidden entries, HP and conditions. Players see enemies' state ("wounded", "bloodied") but not exact HP or AC.
 
 ### Character builder (Player Core and Player Core 2)
-- Every Remaster class (29), listed as core classes (Player Core 1 and 2) and other classes, 38 ancestries with heritages plus versatile heritages, and 269 backgrounds, each labelled with its book. Subclass choices (muses, doctrines, rackets, bloodlines, patrons, eidolons, hybrid studies, kinetic gates and so on) are included, and spellcasting traditions come from the subclass where it decides them.
+- Every Remaster class (29), listed as core classes (Player Core 1 and 2) and other classes; 38 ancestries grouped as core or other, then by rarity with heritages plus versatile heritages, and 269 backgrounds, each labelled with its book. Subclass choices (muses, doctrines, rackets, bloodlines, patrons, eidolons, hybrid studies, kinetic gates and so on) are included, and spellcasting traditions come from the subclass where it decides them.
 - Backgrounds are chosen from a searchable list that shows each one's attribute boosts, trained skills and lore, and skill feat; search by skill ("diplomacy") to find backgrounds that train it.
-- Custom heritages: name and describe your own, and pick the rules benefit closest to it (story only, a 1st-level general feat like Versatile Human, or a trained skill that becomes expert at 5th like Skilled Human).
+- Custom heritage: descend from a second, existing ancestry. You can take that ancestry's ancestry feats (as with Adopted Ancestry) and, if your table agrees, gain its special vision (darkvision or low-light vision). Give it a name and description if you like.
 - Heritage and feat grants are handled: Versatile Human's general feat, Skilled Human's skill (expert at 5th), Natural Ambition's class feat, General Training's general feat, Natural Skill's two skills.
 - Levels 1-20: ancestry boosts (including the alternate two-free-boost option), background, class key attribute, free boosts and level 5/10/15/20 boosts with partial boosts above +4; trained skills and skill increases with rank limits; ancestry, class, skill and general feat slots by level with prerequisite hints; spell selection by tradition with default slot counts; armor, shields, weapons with fundamental runes, and gear.
 - Live stat calculation (HP, AC, saves, Perception, skills with armor check penalties, strikes with multiple attack penalties and weapon specialization, class DC, spell attack and DC) and a checklist of unfinished choices. A **random build** button makes a complete character.

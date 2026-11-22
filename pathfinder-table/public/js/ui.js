@@ -198,6 +198,17 @@ export const classGroups = (classes) => [
   { label: "Other classes", options: classes.filter((x) => !isCoreClass(x)).map((x) => x.name) },
 ];
 
+// Ancestries: core (Player Core 1 and 2) first, then everything else; each split by rarity
+const RARITY_ORDER = ["common", "uncommon", "rare", "unique"];
+export const ancestryGroups = (ancestries) => {
+  const groups = [];
+  for (const core of [true, false]) for (const r of RARITY_ORDER) {
+    const list = ancestries.filter((a) => /Player Core/.test(a.source || "") === core && (a.rarity || "common") === r);
+    if (list.length) groups.push({ label: `${core ? "Core" : "Other"}: ${r}`, options: list.map((a) => a.name) });
+  }
+  return groups;
+};
+
 export function debounce(fn, ms = 300) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };

@@ -14,8 +14,8 @@ const SETS = {
   gear: { label: "Items", meta: (g) => `Item ${g.level} · ${g.type} · ${g.price} gp` },
   weapons: { label: "Weapons", meta: (w) => `${cap(w.category)} · ${w.damage} ${w.damageType} · ${w.traits.join(", ")}${w.range ? " · " + w.range + " ft" : ""}` },
   armor: { label: "Armor", meta: (a) => `${cap(a.category)} · +${a.ac} AC · Dex cap ${a.dexCap} · Str ${a.strength} · check ${a.checkPenalty}` },
-  ancestries: { label: "Ancestries", meta: (a) => `${a.hp} HP · ${a.speed} ft · ${a.source}` },
-  classes: { label: "Classes", meta: (c) => `${c.hp} HP/level · ${c.source}` },
+  ancestries: { label: "Ancestries", meta: (a) => `${a.hp} HP · ${a.speed} ft · ${a.rarity}` },
+  classes: { label: "Classes", meta: (c) => `${c.hp} HP/level` },
   backgrounds: { label: "Backgrounds", meta: (b) => `${b.skills.map(cap).join(", ")} · ${b.feat || ""}` },
   creatures: { label: "Creatures", meta: (c) => `Creature ${c.level} · ${c.traits.join(", ")}`, dmOnly: true },
 };
@@ -93,5 +93,5 @@ export function statBlock(c) {
     ...(c.strikes || []).map((s) => line(cap(s.type), `${s.name} ${signed(s.bonus)} (${s.traits.join(", ")}), Damage ${s.damage}`)),
     c.spells?.length ? line("Spells", c.spells.join(", ")) : null,
     ...(c.abilities || []).map((a) => h("div", { class: "ability" }, h("strong", {}, a.name, a.actions ? " " + actionText(a.actions) : ""), richText(a.desc))),
-    h("p", { class: "muted" }, `Source: ${c.source} `, aon(c.name)));
+    h("p", { class: "muted" }, aon(c.name)));
 }
