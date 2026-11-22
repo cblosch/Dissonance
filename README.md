@@ -68,7 +68,3 @@ python3 -m http.server 8000
 - `src/music.js`: the staff, the keys, each level's enemy mix, and which notes count as off-key
 - `src/notes.js`: the note models and the stats for each enemy type
 - `src/audio.js`: all the sound, made with the Web Audio API, including the soundtrack
-
-## Also in this repository
-
-[`pathfinder-table/`](pathfinder-table/) is a separate app for running Pathfinder 2e (Remaster) games with up to six players and a GM. See its README for details.
