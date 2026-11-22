@@ -1,8 +1,9 @@
-import { h, clear, cap, signed, field, select, modal, richText, toast, confirmDialog } from "./ui.js";
+import { h, clear, cap, signed, field, select, modal, richText, toast, confirmDialog, groupedSelect, classGroups } from "./ui.js";
 import { load, coreData } from "./data.js";
 import {
   ATTRS, ATTR_NAMES, SKILLS, RANKS, AON, computeCharacter, validateCharacter, freeSkillCount,
   featSlotsFor, traditionFor, FULL_CASTERS, SPONTANEOUS, keyOptions, needsTraditionChoice, ESTIMATED_SLOTS, progressionFor,
+  CUSTOM_HERITAGE, CUSTOM_BENEFITS, heritageName,
 } from "./shared/rules.js";
 import { autoBuild } from "./companions.js";
 
@@ -86,11 +87,22 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
       field("Name", name),
       field("Level", select(Array.from({ length: 20 }, (_, i) => i + 1), c.level, (v) => set("level", +v))),
       field("Ancestry", select([{ value: "", label: "— choose —" }, ...data.ancestries.map((x) => ({ value: x.name, label: `${x.name}${x.source.includes("Player Core") ? "" : " · " + shortSource(x.source)}` }))], c.ancestry, (v) => { c.heritage = ""; c.boosts.ancestry = []; set("ancestry", v); })),
-      field("Heritage", select([{ value: "", label: a ? "— choose —" : "pick an ancestry first" }, ...heritages.map((x) => ({ value: x.name, label: x.name + (x.versatile ? " (versatile)" : "") }))], c.heritage, (v) => set("heritage", v))),
+      field("Heritage", select([{ value: "", label: a ? "— choose —" : "pick an ancestry first" }, ...heritages.map((x) => ({ value: x.name, label: x.name + (x.versatile ? " (versatile)" : "") })), ...(a ? [{ value: CUSTOM_HERITAGE, label: "Custom heritage…" }] : [])], c.heritage, (v) => set("heritage", v))),
       field("Background", h("button", { class: `picker-btn ${c.background ? "" : "empty"}`, onclick: () => pickBackground() },
         c.background ? h("span", {}, h("strong", {}, c.background), h("small", { class: "muted" }, bgSummary(background()))) : "Choose a background…")),
-      field("Class", select([{ value: "", label: "— choose —" }, ...data.classes.map((x) => ({ value: x.name, label: `${x.name}${x.source.includes("Player Core") ? "" : " · " + shortSource(x.source)}` }))], c.class, (v) => { c.subclass = ""; c.keyAttribute = ""; c.feats = Object.fromEntries(Object.entries(c.feats).filter(([key]) => !key.startsWith("class"))); c.spells = { cantrips: [], known: {}, slotOverrides: {} }; set("class", v); })),
+      field("Class", groupedSelect(classGroups(data.classes), c.class, (v) => { c.subclass = ""; c.keyAttribute = ""; c.feats = Object.fromEntries(Object.entries(c.feats).filter(([key]) => !key.startsWith("class"))); c.spells = { cantrips: [], known: {}, slotOverrides: {} }; set("class", v); }, { first: { value: "", label: "— choose —" } })),
     ));
+    if (c.heritage === CUSTOM_HERITAGE) {
+      c.customHeritage ||= { name: "", desc: "", benefit: "flavor" };
+      const ch = c.customHeritage;
+      sec.append(h("div", { class: "bsec custom-heritage" },
+        h("h4", {}, "Custom heritage"),
+        h("p", { class: "hint" }, "Agree on custom heritages with your table. Pick the benefit closest to what you have in mind; the description is for everyone to read."),
+        h("div", { class: "grid2" },
+          field("Heritage name", h("input", { id: "ch-name", value: ch.name, placeholder: `e.g. Stormborn ${a?.name || ""}`.trim(), oninput: (e) => { ch.name = e.target.value; summary(); } })),
+          field("Rules benefit", select(Object.entries(CUSTOM_BENEFITS).map(([value, label]) => ({ value, label })), ch.benefit, (v) => { ch.benefit = v; render(); }))),
+        field("Description", h("textarea", { id: "ch-desc", rows: 3, value: ch.desc, placeholder: "Where it comes from and how it shows", oninput: (e) => { ch.desc = e.target.value; } }))));
+    }
     if (k?.subclasses?.length) {
       sec.append(field(cap(k.subclassLabel), select([{ value: "", label: "— choose —" }, ...k.subclasses.map((s) => s.name)], c.subclass, (v) => set("subclass", v))));
     }
@@ -122,7 +134,7 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
     if (her) info.append(infoCard(her.name, "Heritage", her.desc));
     const bg = background();
     if (bg) info.append(infoCard(bg.name, `Trained: ${[...bg.skills.map(cap), ...bg.lore].join(", ")} · Feat: ${bg.feat || "—"}`, bg.desc));
-    if (k) info.append(infoCard(k.name, `${k.hp} HP/level · Key: ${keyOptions(k).map((x) => ATTR_NAMES[x]).join(" or ")} · ${k.source.replace("Pathfinder ", "")}${progressionFor(k)?.extracted ? " · proficiency increases read from the class text; check your saves and weapons against AoN" : ""}`, k.desc));
+    if (k) info.append(infoCard(k.name, `${k.hp} HP/level · Key: ${keyOptions(k).map((x) => ATTR_NAMES[x]).join(" or ")}${progressionFor(k)?.extracted ? " · proficiency increases read from the class text; check your saves and weapons against AoN" : ""}`, k.desc));
     const sub = k?.subclasses?.find((s) => s.name === c.subclass);
     if (sub) info.append(infoCard(sub.name, cap(k.subclassLabel), sub.desc));
     sec.append(info);
@@ -234,8 +246,8 @@ export function mountBuilder(container, initial, { onSave, onCancel, title = "Ch
       }
       sec.append(grid);
     }
-    if (c.heritage === "Skilled Human") {
-      sec.append(field("Skilled Human skill (expert at 5th level)", select([{ value: "", label: "— choose —" }, ...Object.keys(SKILLS).map((s) => ({ value: s, label: cap(s) }))], c.skills.heritage || "", (v) => set("skills.heritage", v))));
+    if (c.heritage === "Skilled Human" || (c.heritage === CUSTOM_HERITAGE && c.customHeritage?.benefit === "skill")) {
+      sec.append(field(`${heritageName(c)} skill (expert at 5th level)`, select([{ value: "", label: "— choose —" }, ...Object.keys(SKILLS).map((s) => ({ value: s, label: cap(s) }))], c.skills.heritage || "", (v) => set("skills.heritage", v))));
     }
     const lore = h("input", { value: (c.skills.lore || []).join(", "), placeholder: "e.g. Tavern Lore", onchange: (e) => set("skills.lore", e.target.value.split(",").map((x) => x.trim()).filter(Boolean)) });
     sec.append(field("Extra Lore skills (comma separated, e.g. from feats)", lore));

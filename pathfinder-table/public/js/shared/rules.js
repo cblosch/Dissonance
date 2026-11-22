@@ -165,6 +165,17 @@ export function needsTraditionChoice(char, classData) {
 }
 
 // Key attribute options (Psychic's data leaves it open: Intelligence or Charisma)
+// Custom heritages: a name and description, plus an optional benefit modelled on core heritages
+export const CUSTOM_HERITAGE = "Custom";
+export const CUSTOM_BENEFITS = {
+  flavor: "Story only (no rules change)",
+  feat: "A 1st-level general feat (like Versatile Human)",
+  skill: "Trained in a skill, expert at 5th level (like Skilled Human)",
+};
+export const heritageName = (char) => (char.heritage === CUSTOM_HERITAGE ? char.customHeritage?.name || "Custom heritage" : char.heritage);
+const grantsHeritageSkill = (char) => char.heritage === "Skilled Human" || (char.heritage === CUSTOM_HERITAGE && char.customHeritage?.benefit === "skill");
+const grantsHeritageFeat = (char) => char.heritage === "Versatile Human" || (char.heritage === CUSTOM_HERITAGE && char.customHeritage?.benefit === "feat");
+
 export const keyOptions = (classData) => (classData.keyAttribute.length ? classData.keyAttribute : ["int", "cha"]);
 
 // Progression: verified tables above for Player Core classes, extracted from class text for the rest
@@ -277,7 +288,7 @@ export function computeCharacter(char, data) {
   if (char.class === "Cleric" && char.deitySkill) trainedSources.push(char.deitySkill);
   for (const s of trainedSources) if (s in skillRank) skillRank[s] = Math.max(skillRank[s], 1);
   // Skilled Human: trained in one chosen skill, expert in it at 5th level
-  if (char.heritage === "Skilled Human" && char.skills?.heritage in skillRank) skillRank[char.skills.heritage] = Math.max(skillRank[char.skills.heritage], level >= 5 ? 2 : 1);
+  if (grantsHeritageSkill(char) && char.skills?.heritage in skillRank) skillRank[char.skills.heritage] = Math.max(skillRank[char.skills.heritage], level >= 5 ? 2 : 1);
   const increases = char.skills?.increases || {};
   for (const lvl of Object.keys(increases).map(Number).sort((a, b) => a - b)) {
     if (lvl > level) continue;
@@ -407,7 +418,8 @@ export function validateCharacter(char, data) {
   if (classData?.subclasses?.length && !char.subclass) issues.push(`Choose a ${classData.subclassLabel}.`);
   if (classData && keyOptions(classData).length > 1 && !char.keyAttribute) issues.push("Choose a key attribute.");
   if (classData && needsTraditionChoice(char, classData) && !char.choices?.tradition) issues.push("Choose your spellcasting tradition.");
-  if (char.heritage === "Skilled Human" && !char.skills?.heritage) issues.push("Choose your Skilled Human skill.");
+  if (grantsHeritageSkill(char) && !char.skills?.heritage) issues.push(`Choose your ${heritageName(char)} skill.`);
+  if (char.heritage === CUSTOM_HERITAGE && !char.customHeritage?.name) issues.push("Name your custom heritage.");
   const b = char.boosts || {};
   const dupe = (arr) => arr && new Set(arr.filter(Boolean)).size !== arr.filter(Boolean).length;
   if ((b.free || []).filter(Boolean).length < 4) issues.push("Pick all four free attribute boosts.");
@@ -453,7 +465,7 @@ export function featSlotsFor(char, classData) {
   add(classData.generalFeatLevels, "general", "general");
   // feats granted by a heritage or by other feats
   const chosen = Object.values(char.feats || {});
-  if (char.heritage === "Versatile Human") slots.push({ key: "heritage-1", kind: "general", level: 1, label: "general (Versatile Human)" });
+  if (grantsHeritageFeat(char)) slots.push({ key: "heritage-1", kind: "general", level: 1, label: `general (${heritageName(char)})` });
   if (chosen.includes("Natural Ambition")) slots.push({ key: "bonusclass-1", kind: "class", level: 1, label: "class (Natural Ambition)" });
   if (chosen.includes("General Training")) slots.push({ key: "bonusgeneral-1", kind: "general", level: 1, label: "general (General Training)" });
   return slots.sort((a, b) => a.level - b.level);

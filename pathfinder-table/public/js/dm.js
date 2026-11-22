@@ -1,4 +1,4 @@
-import { h, clear, cap, tabs, toast, modal, field, select, copyText, debounce, isMobile, onLayoutChange, actionSheet, confirmDialog, promptDialog, formDialog, MODE } from "./ui.js";
+import { h, clear, cap, tabs, toast, modal, field, select, copyText, debounce, isMobile, onLayoutChange, actionSheet, confirmDialog, promptDialog, formDialog, MODE, groupedSelect, classGroups, themeToggle } from "./ui.js";
 import { act, connect, session, askAI, config, shareInfo, exportGame, canPrint, isArtifact } from "./transport.js";
 import { coreData, load } from "./data.js";
 import { createMapView, generateMap, MAP_TYPES, visibleFrom, TERRAIN } from "./map.js";
@@ -265,7 +265,7 @@ export async function mountDM(app, { home } = {}) {
     const classes = coreData().classes.map((c) => c.name);
     const taken = new Set(Object.values(state.characters).map((c) => c.class));
     const suggested = ["Cleric", "Fighter", "Rogue", "Wizard", "Bard", "Ranger", "Champion", "Druid"].find((c) => !taken.has(c)) || "";
-    const cls = select([{ value: "", label: "Random" }, ...classes], suggested, () => {});
+    const cls = groupedSelect(classGroups(coreData().classes), suggested, () => {}, { first: { value: "", label: "Random" } });
     const pers = h("input", { placeholder: "e.g. cheerful, reckless, devout to Sarenrae" });
     const m = modal(`Fill seat ${s.index + 1} with an AI companion`, h("div", {},
       h("p", { class: "hint" }, `Builds a complete level ${state.plot.partyLevel || 1} character (set party level in the Plot tab). ${suggested ? `Suggested: ${suggested}, which the party doesn't have yet.` : ""} You run it, with turn suggestions from the initiative tracker${ai ? " and the AI assistant" : ""}.`),
@@ -471,6 +471,7 @@ export async function mountDM(app, { home } = {}) {
         h("button", { class: "small", onclick: () => copyText(share.invite) }, share.inviteLabel.replace(/^Copy /, "Copy ")),
         share.private ? h("button", { class: "small", title: "Anyone with this link can run this game.", onclick: () => copyText(share.private) }, "Copy GM link") : null,
         h("button", { class: "small", onclick: doExport }, "Export")),
+      themeToggle(),
       h("button", { class: "icon-btn menu-btn", title: "Menu", onclick: () => actionSheet(state.name, menu) }, "⋯"));
   }
 }

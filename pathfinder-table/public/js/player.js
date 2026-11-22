@@ -1,4 +1,4 @@
-import { h, clear, tabs, toast, copyText, modal, isMobile, onLayoutChange, actionSheet } from "./ui.js";
+import { h, clear, tabs, toast, copyText, modal, isMobile, onLayoutChange, actionSheet, themeToggle } from "./ui.js";
 import { act, connect, session, shareInfo, canPrint, isArtifact, onWaitingForGM, config, askAI, saveToLibrary } from "./transport.js";
 import { pickFromLibrary } from "./library.js";
 import { generateMap, MAP_TYPES } from "./map.js";
@@ -301,6 +301,7 @@ export function mountPlayer(app, { home } = {}) {
       n && !isMobile() ? h("button", { class: "small primary", onclick: () => tabset.select("handouts") }, `📜 ${n} new`) : null,
       h("span", { class: "spacer" }),
       share.private ? h("span", { class: "top-actions" }, h("button", { class: "small", title: "Open your seat on another device", onclick: () => copyText(share.private) }, "Copy my personal link")) : null,
+      themeToggle(),
       h("button", { class: "icon-btn menu-btn", title: "Menu", onclick: () => actionSheet(state.name, [
         share.private ? { icon: "🔗", label: share.privateLabel, onClick: () => copyText(share.private) } : null,
         { icon: "🏠", label: "Back to start", onClick: () => home && home() },

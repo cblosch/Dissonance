@@ -1,6 +1,6 @@
 import { h, clear, cap, signed, modal, richText, toast, select } from "./ui.js";
 import { load, coreData } from "./data.js";
-import { ATTRS, ATTR_NAMES, SKILLS, RANKS, AON, computeCharacter } from "./shared/rules.js";
+import { ATTRS, ATTR_NAMES, SKILLS, RANKS, AON, computeCharacter, heritageName } from "./shared/rules.js";
 import { act } from "./transport.js";
 import { actionText } from "./builder.js";
 
@@ -31,8 +31,9 @@ export function renderSheet(char, { editable = false, onEdit, rollAs, compact = 
     h("div", { class: "token-dot", style: { background: char.color || "#3b6ea5" } }, (char.name || "?")[0]),
     h("div", {},
       h("h2", {}, char.name || "Unnamed"),
-      h("p", { class: "muted" }, `Level ${char.level} ${char.heritage ? char.heritage + " " : ""}${char.ancestry} ${char.class}${char.subclass ? " (" + char.subclass + ")" : ""} · ${char.background}${char.deity ? " · " + char.deity : ""}`)),
+      h("p", { class: "muted" }, `Level ${char.level} ${char.heritage ? heritageName(char) + " " : ""}${char.ancestry} ${char.class}${char.subclass ? " (" + char.subclass + ")" : ""} · ${char.background}${char.deity ? " · " + char.deity : ""}`)),
     editable && onEdit ? h("button", { onclick: onEdit }, "Edit build") : null));
+  if (char.heritage === "Custom" && char.customHeritage?.desc) root.append(h("p", { class: "hint" }, h("strong", {}, `${heritageName(char)}: `), char.customHeritage.desc));
 
   // HP & defenses
   const hpInput = h("input", { type: "number", value: hp, style: { width: "4.5em" }, disabled: !editable ? "disabled" : null });

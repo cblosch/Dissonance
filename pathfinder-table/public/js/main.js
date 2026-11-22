@@ -1,9 +1,10 @@
-import { h, clear, toast, field, select, MODE } from "./ui.js";
+import { h, clear, toast, field, select, MODE, applyTheme, themeToggle } from "./ui.js";
 import { init, createGame, gameInfo, joinGame, enter, myGames, forget, onError, isArtifact, listLibrary } from "./transport.js";
 import { libraryPanel, strip } from "./library.js";
 import { loadCore } from "./data.js";
 
 const app = document.getElementById("app");
+applyTheme();
 onError((e) => toast(e.message, "error"));
 
 // ---------------- navigation ----------------
@@ -62,6 +63,7 @@ async function landing(error) {
   let gmless = false;
   app.append(
     h("div", { class: "landing" },
+      h("div", { class: "row end" }, themeToggle()),
       h("header", { class: "hero" },
         h("h1", {}, "Pathfinder Table"),
         h("p", {}, "Run Pathfinder Second Edition (Remaster) games for up to six players and a GM: shared maps, handouts, a character builder and GM tools in one place.")),

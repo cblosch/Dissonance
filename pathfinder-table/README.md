@@ -37,6 +37,10 @@ It uses `claude-opus-5-5` by default (`PF_TABLE_MODEL` overrides it). Players ne
 - The AI assistant uses the viewer's own Claude access, so no API key is needed. Exports go through a download prompt. Printing isn't available there.
 - `public/js/cloud.js` is this transport; `public/js/api.js` is the server one; `transport.js` picks between them.
 
+## Look and feel
+
+A storybook theme: paper pages and ink by day, a candlelit leather-bound look at night. The theme follows your device by default; the switch in the top bar cycles between matching your device, light and dark, and remembers your choice on that device. Type is IM Fell English for headings and Crimson Pro for text (Google Fonts, with Georgia and Palatino as fallbacks).
+
 ## Phones and tablets
 
 The same app adapts to the screen. On phones (up to 760px wide):
@@ -93,8 +97,9 @@ Build characters from the start screen before you have a game. They're kept per 
 - **Initiative tracker** with hidden entries, HP and conditions. Players see enemies' state ("wounded", "bloodied") but not exact HP or AC.
 
 ### Character builder (Player Core and Player Core 2)
-- Every Remaster class (29, from Player Core 1 and 2, Impossible Magic, Battlecry!, Guns & Gears, War of Immortals, Dark Archive Remastered and Rage of Elements), 38 ancestries with heritages plus versatile heritages, and 269 backgrounds, each labelled with its book. Subclass choices (muses, doctrines, rackets, bloodlines, patrons, eidolons, hybrid studies, kinetic gates and so on) are included, and spellcasting traditions come from the subclass where it decides them.
+- Every Remaster class (29), listed as core classes (Player Core 1 and 2) and other classes, 38 ancestries with heritages plus versatile heritages, and 269 backgrounds, each labelled with its book. Subclass choices (muses, doctrines, rackets, bloodlines, patrons, eidolons, hybrid studies, kinetic gates and so on) are included, and spellcasting traditions come from the subclass where it decides them.
 - Backgrounds are chosen from a searchable list that shows each one's attribute boosts, trained skills and lore, and skill feat; search by skill ("diplomacy") to find backgrounds that train it.
+- Custom heritages: name and describe your own, and pick the rules benefit closest to it (story only, a 1st-level general feat like Versatile Human, or a trained skill that becomes expert at 5th like Skilled Human).
 - Heritage and feat grants are handled: Versatile Human's general feat, Skilled Human's skill (expert at 5th), Natural Ambition's class feat, General Training's general feat, Natural Skill's two skills.
 - Levels 1-20: ancestry boosts (including the alternate two-free-boost option), background, class key attribute, free boosts and level 5/10/15/20 boosts with partial boosts above +4; trained skills and skill increases with rank limits; ancestry, class, skill and general feat slots by level with prerequisite hints; spell selection by tradition with default slot counts; armor, shields, weapons with fundamental runes, and gear.
 - Live stat calculation (HP, AC, saves, Perception, skills with armor check penalties, strikes with multiple attack penalties and weapon specialization, class DC, spell attack and DC) and a checklist of unfinished choices. A **random build** button makes a complete character.

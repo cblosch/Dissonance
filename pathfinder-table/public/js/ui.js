@@ -137,6 +137,62 @@ export function select(options, value, onChange, attrs = {}) {
   return el;
 }
 
+// <select> with <optgroup>s: groups = [{ label, options: [{value,label}|string] }]; `first` is an optional ungrouped first option
+export function groupedSelect(groups, value, onChange, { first, ...attrs } = {}) {
+  const opt = (o) => {
+    const v = typeof o === "object" ? o.value : o, l = typeof o === "object" ? o.label : o;
+    return h("option", { value: v, selected: String(v) === String(value) ? "selected" : null }, l);
+  };
+  return h("select", { ...attrs, onchange: (e) => onChange(e.target.value) },
+    first ? opt(first) : null,
+    groups.filter((g) => g.options.length).map((g) => h("optgroup", { label: g.label }, g.options.map(opt))));
+}
+
+// ---------------------------------------------------------------
+// Light / dark. "system" follows the device (or claude.ai's own theme setting
+// when hosted there); light and dark override it. Remembered per device.
+// ---------------------------------------------------------------
+const THEME_KEY = "pftable.theme";
+const hostTheme = document.documentElement.getAttribute("data-theme"); // set by claude.ai, if any
+const svg = (body) => `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">${body}</svg>`;
+const THEMES = {
+  system: { icon: svg('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>'), label: "Theme: matches your device" },
+  light: { icon: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'), label: "Theme: light" },
+  dark: { icon: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/>'), label: "Theme: dark" },
+};
+export function getTheme() {
+  try { return localStorage.getItem(THEME_KEY) || "system"; } catch { return "system"; }
+}
+export function applyTheme(t = getTheme()) {
+  const root = document.documentElement;
+  if (t === "light" || t === "dark") root.setAttribute("data-theme", t);
+  else if (hostTheme) root.setAttribute("data-theme", hostTheme);
+  else root.removeAttribute("data-theme");
+}
+export function themeToggle() {
+  const btn = h("button", { class: "small theme-btn", type: "button" });
+  const draw = () => { const t = THEMES[getTheme()] || THEMES.system; btn.innerHTML = t.icon; btn.title = `${t.label} (tap to change)`; btn.setAttribute("aria-label", btn.title); };
+  btn.addEventListener("click", () => {
+    const order = ["system", "light", "dark"];
+    const next = order[(order.indexOf(getTheme()) + 1) % order.length];
+    try { localStorage.setItem(THEME_KEY, next); } catch {}
+    applyTheme(next);
+    document.querySelectorAll(".theme-btn").forEach((b) => b !== btn && b.dispatchEvent(new Event("pf-theme")));
+    draw();
+    toast(THEMES[next].label);
+  });
+  btn.addEventListener("pf-theme", draw);
+  draw();
+  return btn;
+}
+
+// Core classes are the Player Core / Player Core 2 ones
+export const isCoreClass = (k) => /Player Core/.test(k.source || "");
+export const classGroups = (classes) => [
+  { label: "Core classes", options: classes.filter(isCoreClass).map((x) => x.name) },
+  { label: "Other classes", options: classes.filter((x) => !isCoreClass(x)).map((x) => x.name) },
+];
+
 export function debounce(fn, ms = 300) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
